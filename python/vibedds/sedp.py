@@ -21,6 +21,7 @@ from vibedds.constants import (
     ENTITYID_UNKNOWN,
     PID_ENDPOINT_GUID, PID_TOPIC_NAME, PID_TYPE_NAME,
     PID_RELIABILITY, PID_DURABILITY,
+    PID_UNICAST_LOCATOR, PID_MULTICAST_LOCATOR,
     PID_DEFAULT_UNICAST_LOCATOR, PID_KEY_HASH,
     PID_PARTICIPANT_GUID,
     DISC_BUILTIN_ENDPOINT_PUBLICATIONS_ANNOUNCER,
@@ -223,7 +224,7 @@ def _parse_endpoint_data(payload: bytes) -> DiscoveredEndpoint | None:
             endpoint.reliability = kind
         elif pid == PID_DURABILITY:
             endpoint.durability = deserialize_durability_qos(value, endian)
-        elif pid == PID_DEFAULT_UNICAST_LOCATOR:
+        elif pid == PID_DEFAULT_UNICAST_LOCATOR or pid == PID_UNICAST_LOCATOR:
             endpoint.unicast_locators.append(Locator.from_bytes(value))
 
     endpoint.qos = QosPolicy(

@@ -207,6 +207,15 @@ pub struct SequenceNumberSet {
 }
 
 impl SequenceNumberSet {
+    /// Create a new empty SequenceNumberSet with the given base.
+    pub fn new(base: SequenceNumber) -> Self {
+        Self {
+            base,
+            num_bits: 0,
+            bitmap: Vec::new(),
+        }
+    }
+
     pub fn serialize(&self, ser: &mut CdrSerializer) {
         self.base.serialize(ser);
         ser.write_u32(self.num_bits);
@@ -345,6 +354,18 @@ impl Timestamp {
         Self {
             seconds: s,
             fraction: f,
+        }
+    }
+
+    /// Get the current time as a Timestamp.
+    pub fn now() -> Self {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let duration = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        Self {
+            seconds: duration.as_secs() as i32,
+            fraction: ((duration.subsec_nanos() as u64 * (1u64 << 32)) / 1_000_000_000) as u32,
         }
     }
 

@@ -128,6 +128,35 @@ impl RtpsMessageBuilder {
             .push(Self::submessage_bytes(SUBMSG_HEARTBEAT, flags, &buf));
     }
 
+    pub fn add_acknack(
+        &mut self,
+        reader_id: EntityId,
+        writer_id: EntityId,
+        reader_sn_state: &SequenceNumberSet,
+        count: u32,
+        final_flag: bool,
+    ) {
+        let mut flags = FLAG_ENDIAN;
+        if final_flag {
+            flags |= 0x02;
+        }
+
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&reader_id.0);
+        buf.extend_from_slice(&writer_id.0);
+        // SequenceNumberSet: base (8) + num_bits (4) + bitmap
+        buf.extend_from_slice(&reader_sn_state.base.high.to_le_bytes());
+        buf.extend_from_slice(&reader_sn_state.base.low.to_le_bytes());
+        buf.extend_from_slice(&reader_sn_state.num_bits.to_le_bytes());
+        for word in &reader_sn_state.bitmap {
+            buf.extend_from_slice(&word.to_le_bytes());
+        }
+        buf.extend_from_slice(&count.to_le_bytes());
+
+        self.submessages
+            .push(Self::submessage_bytes(SUBMSG_ACKNACK, flags, &buf));
+    }
+
     pub fn build(&self) -> Vec<u8> {
         let mut buf = Vec::new();
         // RTPS header (20 bytes)
