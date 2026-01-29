@@ -66,6 +66,7 @@ ENTITY_KIND_PARTICIPANT = 0xC1
 PID_PAD = 0x0000
 PID_SENTINEL = 0x0001
 PID_PARTICIPANT_LEASE_DURATION = 0x0002
+PID_DOMAIN_ID = 0x000F  # Optional: indicates domain
 PID_TOPIC_NAME = 0x0005
 PID_TYPE_NAME = 0x0007
 PID_DURABILITY = 0x001D
@@ -92,6 +93,14 @@ PID_PROPERTY_LIST = 0x0059
 PID_KEY_HASH = 0x0070
 PID_STATUS_INFO = 0x0071
 PID_PARTICIPANT_BUILTIN_ENDPOINTS = 0x0044
+
+# --- XTypes-related PIDs (DDS-XTYPES spec) ---
+PID_DATA_REPRESENTATION = 0x0073
+PID_TYPE_CONSISTENCY_ENFORCEMENT = 0x0053
+
+# --- Additional PIDs for SEDP ---
+PID_EXPECTS_INLINE_QOS = 0x0043
+PID_TYPE_OBJECT = 0x8021  # XTypes: serialized TypeObject (vendor extension)
 
 # --- BuiltinEndpointSet flags ---
 DISC_BUILTIN_ENDPOINT_PARTICIPANT_ANNOUNCER = 1 << 0
@@ -124,14 +133,14 @@ LOCATOR_ADDRESS_INVALID = b'\x00' * 16
 # --- Multicast addresses ---
 SPDP_MULTICAST_ADDRESS = "239.255.0.1"
 
-# --- Port calculations (Section 9.6.1.1) ---
+# --- Port calculations (Section 9.6.1.1, Table 9-15) ---
 PB = 7400  # port base
 DG = 250   # domain gain
 PG = 2     # participant gain
-D0 = 0     # additional offset for multicast
-D1 = 10    # additional offset for unicast metatraffic
-D2 = 1     # additional offset for unicast user traffic
-D3 = 11    # additional offset for multicast user traffic
+D0 = 0     # additional offset for discovery multicast
+D1 = 10    # additional offset for discovery unicast (metatraffic)
+D2 = 1     # additional offset for user traffic multicast
+D3 = 11    # additional offset for user traffic unicast
 
 
 def spdp_multicast_port(domain_id: int) -> int:
@@ -145,10 +154,10 @@ def spdp_unicast_port(domain_id: int, participant_id: int) -> int:
 
 
 def user_unicast_port(domain_id: int, participant_id: int) -> int:
-    """Port for user unicast traffic: PB + DG * domainId + d2 + PG * participantId."""
-    return PB + DG * domain_id + D2 + PG * participant_id
+    """Port for user unicast traffic: PB + DG * domainId + d3 + PG * participantId."""
+    return PB + DG * domain_id + D3 + PG * participant_id
 
 
 def user_multicast_port(domain_id: int) -> int:
-    """Port for user multicast traffic: PB + DG * domainId + d3."""
-    return PB + DG * domain_id + D3
+    """Port for user multicast traffic: PB + DG * domainId + d2."""
+    return PB + DG * domain_id + D2

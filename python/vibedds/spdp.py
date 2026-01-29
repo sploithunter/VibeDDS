@@ -16,6 +16,7 @@ from vibedds.constants import (
     PID_PARTICIPANT_LEASE_DURATION, PID_DEFAULT_UNICAST_LOCATOR,
     PID_METATRAFFIC_UNICAST_LOCATOR, PID_BUILTIN_ENDPOINT_SET,
     PID_DEFAULT_MULTICAST_LOCATOR, PID_METATRAFFIC_MULTICAST_LOCATOR,
+    PID_DOMAIN_ID,
     ENTITYID_SPDP_BUILTIN_PARTICIPANT_WRITER,
     ENTITYID_SPDP_BUILTIN_PARTICIPANT_READER,
     ENTITYID_UNKNOWN, ENTITYID_PARTICIPANT,
@@ -115,6 +116,9 @@ class SPDPWriter:
         # PID_BUILTIN_ENDPOINT_SET
         pl.add_parameter(PID_BUILTIN_ENDPOINT_SET,
                          struct.pack("<I", self._builtin_endpoints))
+
+        # PID_DOMAIN_ID - RTI includes this, might be required for SEDP exchange
+        pl.add_parameter(PID_DOMAIN_ID, struct.pack("<I", self._domain_id))
 
         payload_bytes = pl.finalize()
 

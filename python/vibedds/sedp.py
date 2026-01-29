@@ -20,15 +20,18 @@ from vibedds.constants import (
     ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_READER,
     ENTITYID_UNKNOWN,
     PID_ENDPOINT_GUID, PID_TOPIC_NAME, PID_TYPE_NAME,
-    PID_RELIABILITY, PID_DURABILITY,
+    PID_RELIABILITY, PID_DURABILITY, PID_OWNERSHIP, PID_LIVELINESS,
+    PID_DESTINATION_ORDER, PID_DEADLINE, PID_PARTITION, PID_HISTORY,
     PID_UNICAST_LOCATOR, PID_MULTICAST_LOCATOR,
     PID_DEFAULT_UNICAST_LOCATOR, PID_KEY_HASH,
-    PID_PARTICIPANT_GUID,
+    PID_PARTICIPANT_GUID, PID_EXPECTS_INLINE_QOS, PID_TYPE_OBJECT,
+    PID_PROTOCOL_VERSION, PID_VENDORID,
+    PID_DATA_REPRESENTATION, PID_TYPE_CONSISTENCY_ENFORCEMENT,
     DISC_BUILTIN_ENDPOINT_PUBLICATIONS_ANNOUNCER,
     DISC_BUILTIN_ENDPOINT_PUBLICATIONS_DETECTOR,
     DISC_BUILTIN_ENDPOINT_SUBSCRIPTIONS_ANNOUNCER,
     DISC_BUILTIN_ENDPOINT_SUBSCRIPTIONS_DETECTOR,
-    RTPS_VERSION_MAJOR, RTPS_VERSION_MINOR,
+    RTPS_VERSION_MAJOR, RTPS_VERSION_MINOR, VENDOR_ID,
 )
 from vibedds.types import (
     GuidPrefix, EntityId, Guid, SequenceNumber, SequenceNumberSet,
@@ -173,30 +176,93 @@ def _build_endpoint_data(endpoint: LocalEndpoint, endian: str = "<") -> bytes:
     """Serialize a local endpoint as PL_CDR for SEDP announcement."""
     pl = ParameterListBuilder(endian)
 
-    # PID_ENDPOINT_GUID
+    # PID_ENDPOINT_GUID - required
     pl.add_parameter(PID_ENDPOINT_GUID, endpoint.guid.to_bytes())
 
-    # PID_TOPIC_NAME (CDR string)
+    # PID_PARTICIPANT_GUID - identifies which participant owns this endpoint
+    # Use the GUID prefix + ENTITYID_PARTICIPANT (0xC1)
+    participant_entity_id = bytes([0x00, 0x00, 0x01, 0xC1])
+    participant_guid = endpoint.guid.prefix.value + participant_entity_id
+    pl.add_parameter(PID_PARTICIPANT_GUID, participant_guid)
+
+    # PID_PROTOCOL_VERSION - RTI includes this
+    pl.add_parameter(PID_PROTOCOL_VERSION,
+                     bytes([RTPS_VERSION_MAJOR, RTPS_VERSION_MINOR]))
+
+    # PID_VENDORID - RTI includes this
+    pl.add_parameter(PID_VENDORID, bytes(VENDOR_ID))
+
+    # PID_TOPIC_NAME (CDR string) - required
     ser = CdrSerializer(endian)
     ser.write_string(endpoint.topic_name)
     pl.add_parameter(PID_TOPIC_NAME, ser.getvalue())
 
-    # PID_TYPE_NAME (CDR string)
+    # PID_TYPE_NAME (CDR string) - required
     ser = CdrSerializer(endian)
     ser.write_string(endpoint.type_name)
     pl.add_parameter(PID_TYPE_NAME, ser.getvalue())
 
-    # PID_RELIABILITY
-    pl.add_parameter(PID_RELIABILITY,
-                     serialize_reliability_qos(endpoint.qos, endian))
+    # PID_RELIABILITY - important for QoS matching
+    # RTI includes this in its SEDP publications
+    reliability_data = serialize_reliability_qos(endpoint.qos, endian)
+    pl.add_parameter(PID_RELIABILITY, reliability_data)
 
-    # PID_DURABILITY
-    pl.add_parameter(PID_DURABILITY,
-                     serialize_durability_qos(endpoint.qos, endian))
+    # PID_DURABILITY - important for QoS matching
+    durability_data = serialize_durability_qos(endpoint.qos, endian)
+    pl.add_parameter(PID_DURABILITY, durability_data)
 
-    # PID_DEFAULT_UNICAST_LOCATOR (for each locator)
+    # PID_OWNERSHIP - QoS matching
+    ownership_kind = int(endpoint.qos.ownership) if hasattr(endpoint.qos, 'ownership') else 0
+    pl.add_parameter(PID_OWNERSHIP, struct.pack(endian + "I", ownership_kind))
+
+    # PID_LIVELINESS - QoS matching (kind + lease_duration)
+    liveliness_kind = int(endpoint.qos.liveliness) if hasattr(endpoint.qos, 'liveliness') else 0
+    liveliness_data = struct.pack(endian + "IiI", liveliness_kind, 0x7FFFFFFF, 0xFFFFFFFF)  # INFINITE duration
+    pl.add_parameter(PID_LIVELINESS, liveliness_data)
+
+    # PID_DESTINATION_ORDER - QoS matching
+    dest_order_kind = int(endpoint.qos.destination_order) if hasattr(endpoint.qos, 'destination_order') else 0
+    pl.add_parameter(PID_DESTINATION_ORDER, struct.pack(endian + "I", dest_order_kind))
+
+    # PID_DEADLINE - QoS matching (infinite period)
+    deadline_data = struct.pack(endian + "iI", 0x7FFFFFFF, 0xFFFFFFFF)  # INFINITE
+    pl.add_parameter(PID_DEADLINE, deadline_data)
+
+    # PID_HISTORY - QoS matching (KEEP_LAST with depth 1)
+    history_kind = int(endpoint.qos.history) if hasattr(endpoint.qos, 'history') else 0  # KEEP_LAST
+    history_depth = endpoint.qos.history_depth if hasattr(endpoint.qos, 'history_depth') else 1
+    pl.add_parameter(PID_HISTORY, struct.pack(endian + "II", history_kind, history_depth))
+
+    # XTypes PIDs - DATA_REPRESENTATION (0x0073) and TYPE_CONSISTENCY_ENFORCEMENT (0x0053)
+    # These help with XTypes type negotiation
+    if not endpoint.is_writer:
+        # DATA_REPRESENTATION: Use RTI's exact format for interop
+        # RTI sends: 01 00 00 00 | 00 00 00 00 | 07 00 00 00 (12 bytes)
+        # First u32 = count, then XCDR1 rep (0x0000) with padding, then 0x07 (XCDR2 flags?)
+        data_rep = bytes([
+            0x01, 0x00, 0x00, 0x00,  # count = 1
+            0x00, 0x00,              # XCDR1 = 0
+            0x00, 0x00,              # padding
+            0x07, 0x00, 0x00, 0x00,  # RTI's extra bytes (may indicate XCDR1+XCDR2 support)
+        ])
+        pl.add_parameter(PID_DATA_REPRESENTATION, data_rep)
+
+        # TYPE_CONSISTENCY_ENFORCEMENT: Use RTI's exact format
+        # RTI sends: 00 00 01 09 (4 bytes)
+        type_consistency = bytes([
+            0x00, 0x00,  # kind = DISALLOW_TYPE_COERCION
+            0x01, 0x09,  # flags: ignore_sequence_bounds=true, other flags
+        ])
+        pl.add_parameter(PID_TYPE_CONSISTENCY_ENFORCEMENT, type_consistency)
+
+    # PID_PARTITION - empty partition list (matches default partition)
+    # Format: count(u32) = 0 means empty partition list (default)
+    pl.add_parameter(PID_PARTITION, struct.pack(endian + "I", 0))
+
+    # Include endpoint unicast locators so remote participants know where
+    # to send user data. This is important for data delivery.
     for loc in endpoint.unicast_locators:
-        pl.add_parameter(PID_DEFAULT_UNICAST_LOCATOR, loc.to_bytes())
+        pl.add_parameter(PID_UNICAST_LOCATOR, loc.to_bytes())
 
     return pl.finalize()
 

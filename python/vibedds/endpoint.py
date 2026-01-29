@@ -28,6 +28,7 @@ from vibedds.qos import QosPolicy, ReliabilityKind
 from vibedds.topic import Topic
 from vibedds.reliability import ReliableWriter
 from vibedds.sedp import LocalEndpoint, EndpointDatabase
+from vibedds.spdp import ParticipantDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ class DataWriter:
         transport,  # UdpTransport
         guid_prefix: GuidPrefix,
         endpoint_db: EndpointDatabase | None = None,
+        participant_db: ParticipantDatabase | None = None,
     ):
         self.guid = guid
         self.topic = topic
@@ -72,6 +74,7 @@ class DataWriter:
         self._transport = transport
         self._guid_prefix = guid_prefix
         self._endpoint_db = endpoint_db
+        self._participant_db = participant_db
         self._sequence_number = SequenceNumber.from_value(0)
         self._reliable_writer: ReliableWriter | None = None
 
@@ -109,7 +112,19 @@ class DataWriter:
             if local_ep:
                 remote_readers = self._endpoint_db.find_matching_remote_readers(local_ep)
                 for reader in remote_readers:
-                    for loc in reader.unicast_locators:
+                    # Get locators - use endpoint's if available, fall back to participant's
+                    locators = reader.unicast_locators
+                    if not locators and self._participant_db:
+                        # Look up participant by endpoint GUID prefix
+                        pd = self._participant_db.get(reader.endpoint_guid.prefix)
+                        if pd:
+                            locators = pd.default_unicast_locators
+                            logger.debug(
+                                "Using participant default locators for %s: %s",
+                                reader.topic_name, [(l.ipv4_str, l.port) for l in locators]
+                            )
+
+                    for loc in locators:
                         addr = loc.ipv4_str or "127.0.0.1"
                         self._transport.send_unicast(msg_bytes, addr, loc.port)
                         logger.debug(

@@ -139,6 +139,7 @@ class DomainParticipant:
             transport=self._transport,
             guid_prefix=self.guid_prefix,
             endpoint_db=self._endpoint_db,
+            participant_db=self._participant_db,
         )
         self._writers.append(writer)
 
@@ -305,6 +306,8 @@ class DomainParticipant:
             messages = self._sedp.build_announcement_messages(
                 pd.guid_prefix, pd.metatraffic_unicast_locators
             )
+            logger.info("Sending %d SEDP messages to %s", len(messages),
+                       [(m[1], m[2]) for m in messages])
             for msg_bytes, addr, port in messages:
                 self._transport.send_unicast(msg_bytes, addr, port)
 
