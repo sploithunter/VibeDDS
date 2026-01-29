@@ -1,0 +1,7 @@
+# Ignore generated artifacts; keep only sources/config.
+*
+!ShapeType.idl
+!Publisher.cpp
+!Subscriber.cpp
+!rtps.ini
+!.gitignore

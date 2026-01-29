@@ -5,11 +5,24 @@
 /// matching of DataWriters and DataReaders across participants.
 
 use std::collections::HashMap;
+use std::env;
 
-use crate::cdr::{encapsulation_header, parse_encapsulation_header, CdrDeserializer, CdrSerializer, Endian, ParameterListBuilder, ParameterListParser};
+use crate::cdr::{
+    encapsulation_header, parse_encapsulation_header, CdrDeserializer, CdrSerializer, Endian,
+    ParameterListBuilder, ParameterListParser,
+};
 use crate::constants::*;
 use crate::messages::{DataSubmessage, HeartbeatSubmessage};
-use crate::qos::{deserialize_durability_qos, deserialize_reliability_qos, qos_compatible, serialize_durability_qos, serialize_reliability_qos, DurabilityKind, QosPolicy, ReliabilityKind};
+use crate::qos::{
+    deserialize_durability_qos, deserialize_reliability_qos, qos_compatible,
+    serialize_data_representation_qos, serialize_data_representation_qos_rti, serialize_deadline_qos,
+    serialize_destination_order_qos, serialize_durability_qos, serialize_history_qos,
+    serialize_liveliness_qos, serialize_ownership_qos, serialize_partition_qos,
+    serialize_reliability_qos, serialize_type_consistency_enforcement_qos,
+    serialize_type_consistency_enforcement_qos_compact, DataRepresentationId, DurabilityKind,
+    QosPolicy, ReliabilityKind, TypeConsistencyKind, RTI_DATA_REPRESENTATION_DEFAULT,
+    RTI_TYPE_CONSISTENCY_DEFAULT,
+};
 use crate::reliability::{ReliableReader, ReliableWriter};
 use crate::spdp::DiscoveredParticipant;
 use crate::types::*;
@@ -25,6 +38,9 @@ pub struct DiscoveredEndpoint {
     pub durability: DurabilityKind,
     pub unicast_locators: Vec<Locator>,
     pub qos: QosPolicy,
+    pub type_information: Option<Vec<u8>>,
+    pub type_object: Option<Vec<u8>>,
+    pub group_entity_id: Option<u32>,
 }
 
 impl DiscoveredEndpoint {
@@ -37,6 +53,9 @@ impl DiscoveredEndpoint {
             durability: DurabilityKind::Volatile,
             unicast_locators: Vec::new(),
             qos: QosPolicy::default(),
+            type_information: None,
+            type_object: None,
+            group_entity_id: None,
         }
     }
 }
@@ -50,6 +69,8 @@ pub struct LocalEndpoint {
     pub qos: QosPolicy,
     pub is_writer: bool,
     pub unicast_locators: Vec<Locator>,
+    pub type_information: Option<Vec<u8>>,
+    pub type_object: Option<Vec<u8>>,
 }
 
 impl LocalEndpoint {
@@ -61,6 +82,8 @@ impl LocalEndpoint {
             qos,
             is_writer: true,
             unicast_locators: Vec::new(),
+            type_information: None,
+            type_object: None,
         }
     }
 
@@ -72,7 +95,363 @@ impl LocalEndpoint {
             qos,
             is_writer: false,
             unicast_locators: Vec::new(),
+            type_information: None,
+            type_object: None,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LocatorPid {
+    Endpoint,
+    Default,
+    Both,
+}
+
+impl LocatorPid {
+    fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "endpoint" => Some(Self::Endpoint),
+            "default" => Some(Self::Default),
+            "both" => Some(Self::Both),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SedpInteropOptions {
+    profile: String,
+    include_participant_guid: bool,
+    include_protocol_vendor: bool,
+    include_extended_qos: bool,
+    include_partition: bool,
+    include_unicast_locator: bool,
+    locator_pid: LocatorPid,
+    include_reliability: bool,
+    include_durability: bool,
+    include_data_representation: bool,
+    data_representation: Vec<DataRepresentationId>,
+    xtypes_format: String,
+    data_representation_raw: Option<Vec<u8>>,
+    data_representation_tail: Option<u32>,
+    include_type_consistency: bool,
+    type_consistency_kind: TypeConsistencyKind,
+    type_consistency_raw: Option<Vec<u8>>,
+    type_consistency_mask: Option<u32>,
+    include_type_information: bool,
+    include_type_object: bool,
+    group_entity_id: Option<u32>,
+    include_rti_vendor_pids: bool,
+    include_rti_pid_8002_guid: bool,
+    rti_pid_8000: Option<Vec<u8>>,
+    rti_pid_8004: Option<Vec<u8>>,
+    rti_pid_8009: Option<Vec<u8>>,
+    rti_pid_8015: Option<Vec<u8>>,
+    rti_pid_0013: Option<Vec<u8>>,
+    rti_pid_0018: Option<Vec<u8>>,
+    rti_pid_0060: Option<Vec<u8>>,
+}
+
+impl Default for SedpInteropOptions {
+    fn default() -> Self {
+        Self {
+            profile: "minimal".to_string(),
+            include_participant_guid: false,
+            include_protocol_vendor: false,
+            include_extended_qos: false,
+            include_partition: false,
+            include_unicast_locator: true,
+            locator_pid: LocatorPid::Default,
+            include_reliability: true,
+            include_durability: true,
+            include_data_representation: false,
+            data_representation: vec![],
+            xtypes_format: "standard".to_string(),
+            data_representation_raw: None,
+            data_representation_tail: None,
+            include_type_consistency: false,
+            type_consistency_kind: TypeConsistencyKind::DisallowTypeCoercion,
+            type_consistency_raw: None,
+            type_consistency_mask: None,
+            include_type_information: false,
+            include_type_object: false,
+            group_entity_id: None,
+            include_rti_vendor_pids: false,
+            include_rti_pid_8002_guid: false,
+            rti_pid_8000: None,
+            rti_pid_8004: None,
+            rti_pid_8009: None,
+            rti_pid_8015: None,
+            rti_pid_0013: None,
+            rti_pid_0018: None,
+            rti_pid_0060: None,
+        }
+    }
+}
+
+impl SedpInteropOptions {
+    fn env_bool(name: &str) -> Option<bool> {
+        env::var(name).ok().map(|v| {
+            matches!(
+                v.trim().to_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+    }
+
+    fn env_str(name: &str) -> Option<String> {
+        env::var(name).ok().map(|v| v.trim().to_string())
+    }
+
+    fn parse_data_rep_list(value: &str) -> Vec<DataRepresentationId> {
+        value
+            .split(',')
+            .filter_map(|part| match part.trim().to_lowercase().as_str() {
+                "xcdr1" | "xcdr" | "xcdr1_only" => Some(DataRepresentationId::Xcdr1),
+                "xcdr2" | "xcdr2_only" => Some(DataRepresentationId::Xcdr2),
+                "xml" => Some(DataRepresentationId::Xml),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn parse_hex_bytes(value: &str) -> Option<Vec<u8>> {
+        let trimmed = value.trim();
+        let cleaned = trimmed.strip_prefix("0x").unwrap_or(trimmed);
+        let filtered: String = cleaned
+            .chars()
+            .filter(|ch| ch.is_ascii_hexdigit())
+            .collect();
+        if filtered.is_empty() || filtered.len() % 2 != 0 {
+            return None;
+        }
+        let mut bytes = Vec::with_capacity(filtered.len() / 2);
+        let mut chars = filtered.chars();
+        while let (Some(hi), Some(lo)) = (chars.next(), chars.next()) {
+            let hex = [hi, lo].iter().collect::<String>();
+            let val = u8::from_str_radix(&hex, 16).ok()?;
+            bytes.push(val);
+        }
+        Some(bytes)
+    }
+
+    fn from_env() -> Self {
+        let mut opts = Self::default();
+
+        if let Some(profile) = Self::env_str("VIBEDDS_SEDP_PROFILE") {
+            let profile_lc = profile.to_lowercase();
+            opts.profile = profile_lc.clone();
+            if profile_lc == "full" {
+                opts.include_participant_guid = true;
+                opts.include_protocol_vendor = true;
+                opts.include_extended_qos = true;
+                opts.include_partition = true;
+                opts.include_unicast_locator = true;
+                opts.locator_pid = LocatorPid::Endpoint;
+                opts.include_data_representation = true;
+                opts.data_representation = vec![DataRepresentationId::Xcdr1];
+                opts.include_type_consistency = true;
+                opts.type_consistency_kind = TypeConsistencyKind::DisallowTypeCoercion;
+                opts.include_type_information = true;
+            } else if profile_lc == "rti" {
+                opts.include_participant_guid = true;
+                opts.include_protocol_vendor = true;
+                opts.include_extended_qos = true;
+                opts.include_partition = true;
+                opts.include_unicast_locator = true;
+                opts.locator_pid = LocatorPid::Endpoint;
+                opts.include_data_representation = true;
+                opts.data_representation = vec![DataRepresentationId::Xcdr1];
+                opts.include_type_consistency = true;
+                opts.type_consistency_kind = TypeConsistencyKind::DisallowTypeCoercion;
+                opts.include_type_information = true;
+                opts.include_type_object = true;
+                opts.xtypes_format = "rti".to_string();
+                opts.data_representation_raw = Some(RTI_DATA_REPRESENTATION_DEFAULT.to_vec());
+                opts.type_consistency_raw = Some(RTI_TYPE_CONSISTENCY_DEFAULT.to_vec());
+                opts.include_rti_vendor_pids = true;
+                opts.include_rti_pid_8002_guid = true;
+                opts.rti_pid_8000 = Some(vec![0x07, 0x03, 0x00, 0x05]);
+                opts.rti_pid_8004 = None;
+                opts.rti_pid_8009 = Some(vec![0x00, 0x00, 0x00, 0x00]);
+                opts.rti_pid_8015 = Some(vec![0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+                opts.rti_pid_0013 = Some(vec![0xff, 0xff, 0xff, 0xff]);
+                opts.rti_pid_0018 = Some(vec![0xff, 0xff, 0xff, 0xff]);
+                opts.rti_pid_0060 = Some(vec![0x08, 0x01, 0x00, 0x00]);
+            } else if profile_lc == "minimal" {
+                opts = Self::default();
+            } else if profile_lc == "rti_strict" {
+                opts.include_participant_guid = false;
+                opts.include_protocol_vendor = true;
+                opts.include_extended_qos = false;
+                opts.include_partition = false;
+                opts.include_unicast_locator = false;
+                opts.locator_pid = LocatorPid::Endpoint;
+                opts.include_reliability = false;
+                opts.include_durability = false;
+                opts.include_data_representation = true;
+                opts.data_representation = vec![DataRepresentationId::Xcdr1];
+                opts.include_type_consistency = true;
+                opts.type_consistency_kind = TypeConsistencyKind::DisallowTypeCoercion;
+                opts.include_type_information = false;
+                opts.include_type_object = true;
+                opts.xtypes_format = "rti".to_string();
+                opts.data_representation_raw = Some(RTI_DATA_REPRESENTATION_DEFAULT.to_vec());
+                opts.type_consistency_raw = Some(RTI_TYPE_CONSISTENCY_DEFAULT.to_vec());
+                opts.include_rti_vendor_pids = true;
+                opts.include_rti_pid_8002_guid = true;
+                opts.rti_pid_8000 = Some(vec![0x07, 0x03, 0x00, 0x05]);
+                opts.rti_pid_8004 = None;
+                opts.rti_pid_8009 = Some(vec![0x00, 0x00, 0x00, 0x00]);
+                opts.rti_pid_8015 = Some(vec![0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+                opts.rti_pid_0013 = Some(vec![0xff, 0xff, 0xff, 0xff]);
+                opts.rti_pid_0018 = Some(vec![0xff, 0xff, 0xff, 0xff]);
+                opts.rti_pid_0060 = Some(vec![0x08, 0x01, 0x00, 0x00]);
+            }
+        }
+
+        if let Some(xtypes) = Self::env_bool("VIBEDDS_SEDP_XTYPES") {
+            opts.include_data_representation = xtypes;
+            opts.include_type_consistency = xtypes;
+            opts.include_type_information = xtypes;
+        }
+
+        if let Some(data_rep) = Self::env_str("VIBEDDS_SEDP_DATA_REP") {
+            if matches!(
+                data_rep.to_lowercase().as_str(),
+                "none" | "off" | "false" | "0"
+            ) {
+                opts.include_data_representation = false;
+                opts.data_representation.clear();
+            } else {
+                let reps = Self::parse_data_rep_list(&data_rep);
+                if !reps.is_empty() {
+                    opts.include_data_representation = true;
+                    opts.data_representation = reps;
+                }
+            }
+        }
+
+        if let Some(fmt) = Self::env_str("VIBEDDS_SEDP_XTYPES_FORMAT") {
+            let fmt_lc = fmt.to_lowercase();
+            if fmt_lc == "standard" || fmt_lc == "rti" || fmt_lc == "raw" {
+                opts.xtypes_format = fmt_lc;
+            }
+        }
+
+        if let Some(raw) = Self::env_str("VIBEDDS_SEDP_DATA_REP_RAW") {
+            if let Some(bytes) = Self::parse_hex_bytes(&raw) {
+                opts.data_representation_raw = Some(bytes);
+                opts.include_data_representation = true;
+            }
+        }
+
+        if let Some(tail) = Self::env_str("VIBEDDS_SEDP_DATA_REP_TAIL") {
+            if let Ok(val) = u32::from_str_radix(tail.trim_start_matches("0x"), 16) {
+                opts.data_representation_tail = Some(val);
+            } else if let Ok(val) = tail.parse::<u32>() {
+                opts.data_representation_tail = Some(val);
+            }
+        }
+
+        if let Some(tc) = Self::env_str("VIBEDDS_SEDP_TYPE_CONSISTENCY") {
+            match tc.to_lowercase().as_str() {
+                "off" | "none" | "false" | "0" => {
+                    opts.include_type_consistency = false;
+                }
+                "allow" | "allow_type_coercion" => {
+                    opts.include_type_consistency = true;
+                    opts.type_consistency_kind = TypeConsistencyKind::AllowTypeCoercion;
+                }
+                "disallow" | "disallow_type_coercion" => {
+                    opts.include_type_consistency = true;
+                    opts.type_consistency_kind = TypeConsistencyKind::DisallowTypeCoercion;
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(raw) = Self::env_str("VIBEDDS_SEDP_TYPE_CONSISTENCY_RAW") {
+            if let Some(bytes) = Self::parse_hex_bytes(&raw) {
+                opts.type_consistency_raw = Some(bytes);
+                opts.include_type_consistency = true;
+            }
+        }
+
+        if let Some(mask) = Self::env_str("VIBEDDS_SEDP_TYPE_CONSISTENCY_MASK") {
+            if let Ok(val) = u32::from_str_radix(mask.trim_start_matches("0x"), 16) {
+                opts.type_consistency_mask = Some(val);
+            } else if let Ok(val) = mask.parse::<u32>() {
+                opts.type_consistency_mask = Some(val);
+            }
+        }
+
+        if let Some(val) = Self::env_bool("VIBEDDS_SEDP_INCLUDE_PARTICIPANT_GUID") {
+            opts.include_participant_guid = val;
+        }
+        if let Some(val) = Self::env_bool("VIBEDDS_SEDP_INCLUDE_PROTOCOL_VENDOR") {
+            opts.include_protocol_vendor = val;
+        }
+        if let Some(val) = Self::env_bool("VIBEDDS_SEDP_INCLUDE_EXTENDED_QOS") {
+            opts.include_extended_qos = val;
+        }
+        if let Some(val) = Self::env_bool("VIBEDDS_SEDP_INCLUDE_PARTITION") {
+            opts.include_partition = val;
+        }
+        if let Some(val) = Self::env_bool("VIBEDDS_SEDP_INCLUDE_UNICAST_LOCATOR") {
+            opts.include_unicast_locator = val;
+        }
+        if let Some(val) = Self::env_bool("VIBEDDS_SEDP_INCLUDE_RELIABILITY") {
+            opts.include_reliability = val;
+        }
+        if let Some(val) = Self::env_bool("VIBEDDS_SEDP_INCLUDE_DURABILITY") {
+            opts.include_durability = val;
+        }
+        if let Some(val) = Self::env_bool("VIBEDDS_SEDP_INCLUDE_TYPE_INFORMATION") {
+            opts.include_type_information = val;
+        }
+        if let Some(val) = Self::env_bool("VIBEDDS_SEDP_INCLUDE_TYPE_OBJECT") {
+            opts.include_type_object = val;
+        }
+        if let Some(val) = Self::env_bool("VIBEDDS_SEDP_INCLUDE_RTI_VENDOR_PIDS") {
+            opts.include_rti_vendor_pids = val;
+        }
+        if let Some(val) = Self::env_bool("VIBEDDS_SEDP_INCLUDE_RTI_PID_8002_GUID") {
+            opts.include_rti_pid_8002_guid = val;
+        }
+
+        if let Some(locator_pid) = Self::env_str("VIBEDDS_SEDP_LOCATOR_PID") {
+            if let Some(pid) = LocatorPid::from_str(locator_pid.to_lowercase().as_str()) {
+                opts.locator_pid = pid;
+            }
+        }
+
+        if let Some(group_entity_id) = Self::env_str("VIBEDDS_SEDP_GROUP_ENTITY_ID") {
+            if let Ok(val) = u32::from_str_radix(group_entity_id.trim_start_matches("0x"), 16) {
+                opts.group_entity_id = Some(val);
+            } else if let Ok(val) = group_entity_id.parse::<u32>() {
+                opts.group_entity_id = Some(val);
+            }
+        }
+
+        for (env_key, slot) in [
+            ("VIBEDDS_SEDP_RTI_PID_8000", &mut opts.rti_pid_8000),
+            ("VIBEDDS_SEDP_RTI_PID_8004", &mut opts.rti_pid_8004),
+            ("VIBEDDS_SEDP_RTI_PID_8009", &mut opts.rti_pid_8009),
+            ("VIBEDDS_SEDP_RTI_PID_8015", &mut opts.rti_pid_8015),
+            ("VIBEDDS_SEDP_RTI_PID_0013", &mut opts.rti_pid_0013),
+            ("VIBEDDS_SEDP_RTI_PID_0018", &mut opts.rti_pid_0018),
+            ("VIBEDDS_SEDP_RTI_PID_0060", &mut opts.rti_pid_0060),
+        ] {
+            if let Some(raw) = Self::env_str(env_key) {
+                if let Some(bytes) = Self::parse_hex_bytes(&raw) {
+                    *slot = Some(bytes);
+                }
+            }
+        }
+
+        opts
     }
 }
 
@@ -250,11 +629,59 @@ impl Default for EndpointDatabase {
 }
 
 /// Build SEDP endpoint data as PL_CDR for announcement.
-fn build_endpoint_data(endpoint: &LocalEndpoint) -> Vec<u8> {
+fn build_endpoint_data(endpoint: &LocalEndpoint, interop: &SedpInteropOptions) -> Vec<u8> {
     let mut pl = ParameterListBuilder::new(Endian::Little);
 
     // PID_ENDPOINT_GUID
     pl.add_parameter(PID_ENDPOINT_GUID, &endpoint.guid.to_bytes());
+
+    if let Some(group_entity_id) = interop.group_entity_id {
+        pl.add_parameter(PID_GROUP_ENTITY_ID, &group_entity_id.to_le_bytes());
+    }
+
+    if interop.include_participant_guid {
+        let participant_guid = Guid::new(
+            endpoint.guid.prefix,
+            EntityId(ENTITYID_PARTICIPANT),
+        );
+        pl.add_parameter(PID_PARTICIPANT_GUID, &participant_guid.to_bytes());
+    }
+
+    if interop.include_protocol_vendor {
+        pl.add_parameter(
+            PID_PROTOCOL_VERSION,
+            &[RTPS_VERSION_MAJOR, RTPS_VERSION_MINOR],
+        );
+        pl.add_parameter(PID_VENDORID, &VENDOR_ID);
+    }
+
+    if interop.include_rti_vendor_pids {
+        if let Some(ref pid) = interop.rti_pid_8000 {
+            pl.add_parameter(PID_RTI_VENDOR_8000, pid);
+        }
+        if interop.include_rti_pid_8002_guid {
+            pl.add_parameter(PID_RTI_VENDOR_8002, &endpoint.guid.to_bytes());
+        }
+        if let Some(ref pid) = interop.rti_pid_8004 {
+            pl.add_parameter(PID_RTI_VENDOR_8004, pid);
+        }
+        if let Some(ref pid) = interop.rti_pid_8009 {
+            pl.add_parameter(PID_RTI_VENDOR_8009, pid);
+        }
+        if let Some(ref pid) = interop.rti_pid_8015 {
+            pl.add_parameter(PID_RTI_VENDOR_8015, pid);
+        }
+        if endpoint.is_writer {
+            if let Some(ref pid) = interop.rti_pid_0013 {
+                pl.add_parameter(PID_RTI_VENDOR_0013, pid);
+            }
+            if let Some(ref pid) = interop.rti_pid_0060 {
+                pl.add_parameter(PID_RTI_VENDOR_0060, pid);
+            }
+        } else if let Some(ref pid) = interop.rti_pid_0018 {
+            pl.add_parameter(PID_RTI_VENDOR_0018, pid);
+        }
+    }
 
     // PID_TOPIC_NAME (CDR string)
     let mut ser = CdrSerializer::new(Endian::Little);
@@ -267,14 +694,121 @@ fn build_endpoint_data(endpoint: &LocalEndpoint) -> Vec<u8> {
     pl.add_parameter(PID_TYPE_NAME, ser.buffer());
 
     // PID_RELIABILITY
-    pl.add_parameter(PID_RELIABILITY, &serialize_reliability_qos(&endpoint.qos));
+    if interop.include_reliability {
+        pl.add_parameter(PID_RELIABILITY, &serialize_reliability_qos(&endpoint.qos));
+    }
 
     // PID_DURABILITY
-    pl.add_parameter(PID_DURABILITY, &serialize_durability_qos(&endpoint.qos));
+    if interop.include_durability {
+        pl.add_parameter(PID_DURABILITY, &serialize_durability_qos(&endpoint.qos));
+    }
 
-    // PID_DEFAULT_UNICAST_LOCATOR (for each locator)
-    for loc in &endpoint.unicast_locators {
-        pl.add_parameter(PID_DEFAULT_UNICAST_LOCATOR, &loc.to_bytes());
+    if interop.include_extended_qos {
+        pl.add_parameter(
+            PID_OWNERSHIP,
+            &serialize_ownership_qos(&endpoint.qos, Endian::Little),
+        );
+        pl.add_parameter(
+            PID_LIVELINESS,
+            &serialize_liveliness_qos(&endpoint.qos, Endian::Little),
+        );
+        pl.add_parameter(
+            PID_DESTINATION_ORDER,
+            &serialize_destination_order_qos(&endpoint.qos, Endian::Little),
+        );
+        pl.add_parameter(
+            PID_DEADLINE,
+            &serialize_deadline_qos(&endpoint.qos, Endian::Little),
+        );
+        pl.add_parameter(
+            PID_HISTORY,
+            &serialize_history_qos(&endpoint.qos, Endian::Little),
+        );
+    }
+
+    if interop.include_data_representation
+        && (!interop.data_representation.is_empty() || interop.data_representation_raw.is_some())
+    {
+        let data_rep = if let Some(ref raw) = interop.data_representation_raw {
+            raw.clone()
+        } else if interop.xtypes_format == "rti" {
+            serialize_data_representation_qos_rti(
+                &interop.data_representation,
+                Endian::Little,
+                interop.data_representation_tail,
+            )
+        } else {
+            serialize_data_representation_qos(&interop.data_representation, Endian::Little)
+        };
+        pl.add_parameter(PID_DATA_REPRESENTATION, &data_rep);
+    }
+
+    if !endpoint.is_writer && interop.include_type_consistency {
+        let type_consistency = if let Some(ref raw) = interop.type_consistency_raw {
+            raw.clone()
+        } else if interop.xtypes_format == "rti" {
+            serialize_type_consistency_enforcement_qos_compact(
+                interop.type_consistency_kind,
+                false,
+                false,
+                false,
+                false,
+                false,
+                interop.type_consistency_mask,
+                Endian::Little,
+            )
+        } else {
+            serialize_type_consistency_enforcement_qos(
+                interop.type_consistency_kind,
+                false,
+                false,
+                false,
+                false,
+                false,
+                Endian::Little,
+            )
+        };
+        pl.add_parameter(PID_TYPE_CONSISTENCY_ENFORCEMENT, &type_consistency);
+    }
+
+    if interop.include_type_information {
+        if let Some(ref info) = endpoint.type_information {
+            if !info.is_empty() {
+                pl.add_parameter(PID_TYPE_INFORMATION, info);
+            }
+        }
+    }
+
+    if interop.include_type_object {
+        if let Some(ref obj) = endpoint.type_object {
+            if !obj.is_empty() {
+                pl.add_parameter(PID_TYPE_OBJECT, obj);
+            }
+        }
+    }
+
+    if interop.include_partition {
+        pl.add_parameter(
+            PID_PARTITION,
+            &serialize_partition_qos(&endpoint.qos, Endian::Little),
+        );
+    }
+
+    if interop.include_unicast_locator {
+        for loc in &endpoint.unicast_locators {
+            match interop.locator_pid {
+                LocatorPid::Endpoint => {
+                    pl.add_parameter(PID_UNICAST_LOCATOR, &loc.to_bytes());
+                }
+                LocatorPid::Default => {
+                    pl.add_parameter(PID_DEFAULT_UNICAST_LOCATOR, &loc.to_bytes());
+                }
+                LocatorPid::Both => {
+                    pl.add_parameter(PID_UNICAST_LOCATOR, &loc.to_bytes());
+                    pl.add_parameter(PID_DEFAULT_UNICAST_LOCATOR, &loc.to_bytes());
+                }
+            }
+        }
     }
 
     pl.finalize()
@@ -297,6 +831,13 @@ fn parse_endpoint_data(payload: &[u8]) -> Option<DiscoveredEndpoint> {
             PID_ENDPOINT_GUID => {
                 if value.len() >= 16 {
                     endpoint.endpoint_guid = Guid::from_bytes(value);
+                }
+            }
+            PID_GROUP_ENTITY_ID => {
+                if value.len() >= 4 {
+                    endpoint.group_entity_id = Some(u32::from_le_bytes([
+                        value[0], value[1], value[2], value[3],
+                    ]));
                 }
             }
             PID_TOPIC_NAME => {
@@ -328,6 +869,12 @@ fn parse_endpoint_data(payload: &[u8]) -> Option<DiscoveredEndpoint> {
                     endpoint.unicast_locators.push(Locator::from_bytes(value));
                 }
             }
+            PID_TYPE_INFORMATION => {
+                endpoint.type_information = Some(value.to_vec());
+            }
+            PID_TYPE_OBJECT => {
+                endpoint.type_object = Some(value.to_vec());
+            }
             _ => {}
         }
     }
@@ -346,10 +893,15 @@ pub struct SEDPProtocol {
     pub_reader: ReliableReader,
     sub_writer: ReliableWriter,
     sub_reader: ReliableReader,
+    interop: SedpInteropOptions,
 }
 
 impl SEDPProtocol {
     pub fn new(guid_prefix: GuidPrefix) -> Self {
+        Self::new_with_options(guid_prefix, SedpInteropOptions::from_env())
+    }
+
+    pub fn new_with_options(guid_prefix: GuidPrefix, interop: SedpInteropOptions) -> Self {
         Self {
             guid_prefix,
             pub_writer: ReliableWriter::new(
@@ -368,6 +920,7 @@ impl SEDPProtocol {
             sub_reader: ReliableReader::new(
                 Guid::new(guid_prefix, EntityId(ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_READER)),
             ),
+            interop,
         }
     }
 
@@ -415,7 +968,7 @@ impl SEDPProtocol {
 
     /// Queue a local endpoint for SEDP announcement.
     pub fn announce_endpoint(&mut self, endpoint: &LocalEndpoint) {
-        let pl_data = build_endpoint_data(endpoint);
+        let pl_data = build_endpoint_data(endpoint, &self.interop);
         let mut payload = encapsulation_header(PL_CDR_LE).to_vec();
         payload.extend_from_slice(&pl_data);
 
@@ -780,7 +1333,7 @@ mod tests {
         let mut endpoint = LocalEndpoint::new_writer(guid, "HelloWorld", "HelloWorldType", QosPolicy::reliable());
         endpoint.unicast_locators.push(Locator::from_ipv4("192.168.1.100", 7401));
 
-        let pl_data = build_endpoint_data(&endpoint);
+        let pl_data = build_endpoint_data(&endpoint, &SedpInteropOptions::default());
         let mut payload = encapsulation_header(PL_CDR_LE).to_vec();
         payload.extend_from_slice(&pl_data);
 

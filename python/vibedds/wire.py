@@ -24,7 +24,7 @@ from vibedds.messages import (
     InfoTimestampSubmessage, InfoDestinationSubmessage, InfoSourceSubmessage,
     PadSubmessage, Submessage,
 )
-from vibedds.cdr import CdrSerializer, CdrDeserializer
+from vibedds.cdr import CdrSerializer, CdrDeserializer, PL_CDR_LE, PL_CDR_BE
 
 
 class RtpsMessageBuilder:
@@ -299,6 +299,19 @@ class RtpsMessageParser:
 
         if has_data or has_key:
             serialized_payload = body[payload_offset:]
+            # Heuristic: some stacks appear to encode octetsToInlineQos
+            # differently. If the payload doesn't look like an encapsulation
+            # header, try an alternate offset.
+            if serialized_payload and len(serialized_payload) >= 4 and not has_inline_qos:
+                scheme = struct.unpack_from(">H", serialized_payload, 0)[0]
+                if scheme not in (PL_CDR_LE, PL_CDR_BE):
+                    alt_offset = octets_to_inline_qos
+                    if 0 <= alt_offset < len(body):
+                        alt_payload = body[alt_offset:]
+                        if len(alt_payload) >= 4:
+                            alt_scheme = struct.unpack_from(">H", alt_payload, 0)[0]
+                            if alt_scheme in (PL_CDR_LE, PL_CDR_BE):
+                                serialized_payload = alt_payload
 
         return DataSubmessage(
             flags=flags,

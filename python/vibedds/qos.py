@@ -6,6 +6,7 @@ import struct
 from dataclasses import dataclass
 from enum import IntEnum
 
+from vibedds.cdr import CdrSerializer
 from vibedds.types import Duration
 
 
@@ -40,6 +41,17 @@ class DestinationOrderKind(IntEnum):
 class HistoryKind(IntEnum):
     KEEP_LAST = 0
     KEEP_ALL = 1
+
+
+class DataRepresentationId(IntEnum):
+    XCDR1 = 0
+    XML = 1
+    XCDR2 = 2
+
+
+class TypeConsistencyKind(IntEnum):
+    DISALLOW_TYPE_COERCION = 0
+    ALLOW_TYPE_COERCION = 1
 
 
 @dataclass
@@ -132,3 +144,112 @@ def deserialize_durability_qos(data: bytes, endian: str = "<") -> DurabilityKind
     """Deserialize durability QoS from parameter value."""
     kind = struct.unpack(endian + "I", data[:4])[0]
     return DurabilityKind(kind)
+
+
+def serialize_partition_qos(qos: QosPolicy, endian: str = "<") -> bytes:
+    """Serialize PartitionQosPolicy (sequence<string>) in XCDR1."""
+    ser = CdrSerializer(endian)
+    ser.set_origin()
+    if qos.partition:
+        ser.write_uint32(len(qos.partition))
+        for part in qos.partition:
+            ser.write_string(part)
+    else:
+        ser.write_uint32(0)
+    return ser.getvalue()
+
+
+def serialize_data_representation_qos(
+    representations: list[DataRepresentationId],
+    endian: str = "<",
+) -> bytes:
+    """Serialize DataRepresentationQosPolicy (sequence<short>) in XCDR1."""
+    ser = CdrSerializer(endian)
+    ser.set_origin()
+    ser.write_sequence(
+        representations,
+        lambda s, rep: s.write_int16(int(rep)),
+    )
+    return ser.getvalue()
+
+
+RTI_DATA_REPRESENTATION_DEFAULT = bytes.fromhex(
+    "010000000000000007000000"
+)
+RTI_TYPE_CONSISTENCY_DEFAULT = bytes.fromhex(
+    "0100010100000000"
+)
+
+
+def serialize_data_representation_qos_rti(
+    representations: list[DataRepresentationId],
+    endian: str = "<",
+    tail: int | None = None,
+) -> bytes:
+    """Serialize DataRepresentationQosPolicy using RTI-observed layout.
+
+    RTI observed a 12-byte payload for HelloWorld:
+      01 00 00 00 00 00 00 00 07 00 00 00
+    The exact semantics are unclear, so we allow an optional tail value.
+    """
+    if representations == [DataRepresentationId.XCDR1] and tail is None:
+        return RTI_DATA_REPRESENTATION_DEFAULT
+    count = len(representations)
+    data = bytearray()
+    data.extend(struct.pack(endian + "I", count))
+    for rep in representations:
+        data.extend(struct.pack(endian + "I", int(rep)))
+    if tail is not None:
+        data.extend(struct.pack(endian + "I", tail))
+    return bytes(data)
+
+
+def serialize_type_consistency_enforcement_qos(
+    kind: TypeConsistencyKind = TypeConsistencyKind.DISALLOW_TYPE_COERCION,
+    ignore_sequence_bounds: bool = False,
+    ignore_string_bounds: bool = False,
+    ignore_member_names: bool = False,
+    prevent_type_widening: bool = False,
+    force_type_validation: bool = False,
+    endian: str = "<",
+) -> bytes:
+    """Serialize TypeConsistencyEnforcementQosPolicy in XCDR1."""
+    ser = CdrSerializer(endian)
+    ser.set_origin()
+    ser.write_int32(int(kind))
+    ser.write_bool(ignore_sequence_bounds)
+    ser.write_bool(ignore_string_bounds)
+    ser.write_bool(ignore_member_names)
+    ser.write_bool(prevent_type_widening)
+    ser.write_bool(force_type_validation)
+    return ser.getvalue()
+
+
+def serialize_type_consistency_enforcement_qos_compact(
+    kind: TypeConsistencyKind = TypeConsistencyKind.DISALLOW_TYPE_COERCION,
+    ignore_sequence_bounds: bool = False,
+    ignore_string_bounds: bool = False,
+    ignore_member_names: bool = False,
+    prevent_type_widening: bool = False,
+    force_type_validation: bool = False,
+    mask: int | None = None,
+    endian: str = "<",
+) -> bytes:
+    """Serialize TypeConsistencyEnforcementQosPolicy in a compact RTI-style form.
+
+    Encodes kind (u32) + flags mask (u32). This is not standard XCDR1 but
+    matches the 8-byte length observed in RTI captures.
+    """
+    if mask is None:
+        mask = 0
+        if ignore_sequence_bounds:
+            mask |= 1 << 0
+        if ignore_string_bounds:
+            mask |= 1 << 1
+        if ignore_member_names:
+            mask |= 1 << 2
+        if prevent_type_widening:
+            mask |= 1 << 3
+        if force_type_validation:
+            mask |= 1 << 4
+    return struct.pack(endian + "II", int(kind), mask)

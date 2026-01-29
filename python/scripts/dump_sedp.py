@@ -4,7 +4,7 @@
 import struct
 from vibedds.participant import DomainParticipant
 from vibedds.qos import QosPolicy, ReliabilityKind
-from vibedds.sedp import _build_endpoint_data, LocalEndpoint
+from vibedds.sedp import _build_endpoint_data, LocalEndpoint, SedpInteropOptions
 from vibedds.types import Guid, GuidPrefix, EntityId, Locator
 from vibedds.cdr import parse_encapsulation_header, ParameterListParser, PL_CDR_LE, encapsulation_header
 
@@ -32,11 +32,21 @@ PID_NAMES = {
     0x0032: "METATRAFFIC_UNICAST_LOCATOR",
     0x0043: "EXPECTS_INLINE_QOS",
     0x0050: "PARTICIPANT_GUID",
-    0x0053: "TYPE_CONSISTENCY_ENFORCEMENT",
+    0x0053: "GROUP_ENTITY_ID",
+    0x0074: "TYPE_CONSISTENCY_ENFORCEMENT",
+    0x0075: "TYPE_INFORMATION",
     0x005A: "ENDPOINT_GUID",
     0x0058: "BUILTIN_ENDPOINT_SET",
     0x0073: "DATA_REPRESENTATION",
     0x8021: "TYPE_OBJECT",
+    0x0013: "RTI_VENDOR_0013",
+    0x0018: "RTI_VENDOR_0018",
+    0x0060: "RTI_VENDOR_0060",
+    0x8000: "RTI_VENDOR_8000",
+    0x8002: "RTI_VENDOR_8002",
+    0x8004: "RTI_VENDOR_8004",
+    0x8009: "RTI_VENDOR_8009",
+    0x8015: "RTI_VENDOR_8015",
 }
 
 def hex_dump(data: bytes, prefix: str = "  ") -> str:
@@ -66,7 +76,8 @@ def main():
     )
 
     # Build the SEDP payload
-    pl_data = _build_endpoint_data(endpoint)
+    interop = SedpInteropOptions.from_env()
+    pl_data = _build_endpoint_data(endpoint, interop)
     full_payload = encapsulation_header(PL_CDR_LE) + pl_data
 
     print("=" * 60)

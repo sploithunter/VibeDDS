@@ -23,7 +23,7 @@ from vibedds.constants import (
     BUILTIN_ENDPOINT_SET_DEFAULT,
     RTPS_VERSION_MAJOR, RTPS_VERSION_MINOR, VENDOR_ID,
     SPDP_MULTICAST_ADDRESS,
-    spdp_multicast_port,
+    spdp_multicast_port, user_multicast_port,
 )
 from vibedds.types import (
     GuidPrefix, EntityId, Guid, SequenceNumber,
@@ -53,6 +53,8 @@ class DiscoveredParticipant:
     metatraffic_multicast_locators: list[Locator] = field(default_factory=list)
     builtin_endpoints: int = 0
     last_seen: float = 0.0
+    spdp_source_addr: str | None = None
+    spdp_source_port: int | None = None
 
     def is_expired(self, now: float) -> bool:
         if self.lease_duration is None:
@@ -112,6 +114,14 @@ class SPDPWriter:
         # PID_METATRAFFIC_UNICAST_LOCATOR
         meta_loc = Locator.from_ipv4(self._local_ip, self._metatraffic_unicast_port)
         pl.add_parameter(PID_METATRAFFIC_UNICAST_LOCATOR, meta_loc.to_bytes())
+
+        # PID_METATRAFFIC_MULTICAST_LOCATOR
+        meta_mc = Locator.from_ipv4(SPDP_MULTICAST_ADDRESS, spdp_multicast_port(self._domain_id))
+        pl.add_parameter(PID_METATRAFFIC_MULTICAST_LOCATOR, meta_mc.to_bytes())
+
+        # PID_DEFAULT_MULTICAST_LOCATOR (user multicast)
+        user_mc = Locator.from_ipv4(SPDP_MULTICAST_ADDRESS, user_multicast_port(self._domain_id))
+        pl.add_parameter(PID_DEFAULT_MULTICAST_LOCATOR, user_mc.to_bytes())
 
         # PID_BUILTIN_ENDPOINT_SET
         pl.add_parameter(PID_BUILTIN_ENDPOINT_SET,

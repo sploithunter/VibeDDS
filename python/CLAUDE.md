@@ -41,7 +41,7 @@ Investigation status:
 Possible causes still being investigated:
 1. TYPE_OBJECT (PID 0x8021) may be required for XTypes type checking
 2. RTI vendor-specific PIDs (0x8000, 0x800f, 0x8010, etc.)
-3. DATA_REPRESENTATION format differences
+3. DATA_REPRESENTATION / TYPE_CONSISTENCY / TYPE_INFORMATION mismatches
 
 ### SEDP Subscription PIDs Included
 VibeDDS includes these PIDs in SEDP subscription announcements:
@@ -51,10 +51,19 @@ VibeDDS includes these PIDs in SEDP subscription announcements:
 - RELIABILITY (kind + max_blocking_time)
 - DURABILITY, OWNERSHIP, LIVELINESS (with INFINITE lease)
 - DESTINATION_ORDER, DEADLINE (INFINITE), HISTORY (KEEP_LAST, depth=1)
-- DATA_REPRESENTATION (RTI-compatible 12-byte format)
-- TYPE_CONSISTENCY_ENFORCEMENT (RTI-compatible 4-byte format)
+- DATA_REPRESENTATION (XCDR1 sequence<short>, XCDR1 only by default)
+- TYPE_CONSISTENCY_ENFORCEMENT (XCDR1 struct, DISALLOW + all flags false)
+- TYPE_INFORMATION (XTypes TypeInformation blob when known)
 - PARTITION (empty = default partition)
 - UNICAST_LOCATOR
+
+### Interop Experiment Knobs
+SEDP interop can be tuned via env vars (see `specs/interop-sedp-matrix.md`).
+Key toggles: `VIBEDDS_SEDP_PROFILE`, `VIBEDDS_SEDP_XTYPES`,
+`VIBEDDS_SEDP_DATA_REP`, `VIBEDDS_SEDP_TYPE_CONSISTENCY`,
+`VIBEDDS_SEDP_LOCATOR_PID`, `VIBEDDS_SEDP_INCLUDE_TYPE_INFORMATION`.
+
+Latest experiment outcomes are logged in `specs/interop-experiments.md`.
 
 ### Testing RTI Interop
 ```bash

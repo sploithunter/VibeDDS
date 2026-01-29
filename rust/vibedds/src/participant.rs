@@ -15,6 +15,7 @@ use crate::messages::Submessage;
 use crate::sedp::{EndpointDatabase, LocalEndpoint, SEDPProtocol};
 use crate::spdp::{DiscoveredParticipant, ParticipantDatabase, SpdpReader, SpdpWriter};
 use crate::transport::UdpTransport;
+use crate::type_support::{type_information_for, type_is_keyed, type_object_for};
 use crate::types::{EntityId, Guid, GuidPrefix, Timestamp};
 use crate::wire::parse_rtps_message;
 
@@ -193,11 +194,19 @@ impl DomainParticipant {
         type_name: &str,
         qos: crate::qos::QosPolicy,
     ) -> Guid {
-        let entity_id = EntityId([0x00, 0x00, (self.next_writer_id & 0xFF) as u8, 0x02]);
+        let keyed = type_is_keyed(type_name);
+        let writer_kind = if keyed {
+            ENTITY_KIND_USER_WRITER_WITH_KEY
+        } else {
+            ENTITY_KIND_USER_WRITER_NO_KEY
+        };
+        let entity_id = EntityId([0x00, 0x00, (self.next_writer_id & 0xFF) as u8, writer_kind]);
         self.next_writer_id += 1;
         let guid = Guid::new(self.guid_prefix, entity_id);
 
         let mut endpoint = LocalEndpoint::new_writer(guid, topic_name, type_name, qos);
+        endpoint.type_information = type_information_for(type_name).map(|bytes| bytes.to_vec());
+        endpoint.type_object = type_object_for(type_name);
         endpoint.unicast_locators.push(crate::types::Locator::from_ipv4(
             &self.transport.local_ip().to_string(),
             self.transport.user_unicast_port() as u32,
@@ -229,11 +238,19 @@ impl DomainParticipant {
         type_name: &str,
         qos: crate::qos::QosPolicy,
     ) -> Guid {
-        let entity_id = EntityId([0x00, 0x00, (self.next_reader_id & 0xFF) as u8, 0x07]);
+        let keyed = type_is_keyed(type_name);
+        let reader_kind = if keyed {
+            ENTITY_KIND_USER_READER_WITH_KEY
+        } else {
+            ENTITY_KIND_USER_READER_NO_KEY
+        };
+        let entity_id = EntityId([0x00, 0x00, (self.next_reader_id & 0xFF) as u8, reader_kind]);
         self.next_reader_id += 1;
         let guid = Guid::new(self.guid_prefix, entity_id);
 
         let mut endpoint = LocalEndpoint::new_reader(guid, topic_name, type_name, qos);
+        endpoint.type_information = type_information_for(type_name).map(|bytes| bytes.to_vec());
+        endpoint.type_object = type_object_for(type_name);
         endpoint.unicast_locators.push(crate::types::Locator::from_ipv4(
             &self.transport.local_ip().to_string(),
             self.transport.user_unicast_port() as u32,
@@ -265,7 +282,13 @@ impl DomainParticipant {
         type_name: &str,
         qos: crate::qos::QosPolicy,
     ) -> Arc<Mutex<DataWriter>> {
-        let entity_id = EntityId([0x00, 0x00, (self.next_writer_id & 0xFF) as u8, 0x02]);
+        let keyed = type_is_keyed(type_name);
+        let writer_kind = if keyed {
+            ENTITY_KIND_USER_WRITER_WITH_KEY
+        } else {
+            ENTITY_KIND_USER_WRITER_NO_KEY
+        };
+        let entity_id = EntityId([0x00, 0x00, (self.next_writer_id & 0xFF) as u8, writer_kind]);
         self.next_writer_id += 1;
         let guid = Guid::new(self.guid_prefix, entity_id.clone());
 
@@ -282,6 +305,8 @@ impl DomainParticipant {
 
         // Also register in endpoint database for SEDP
         let mut endpoint = LocalEndpoint::new_writer(guid, topic_name, type_name, qos);
+        endpoint.type_information = type_information_for(type_name).map(|bytes| bytes.to_vec());
+        endpoint.type_object = type_object_for(type_name);
         endpoint.unicast_locators.push(crate::types::Locator::from_ipv4(
             &self.transport.local_ip().to_string(),
             self.transport.user_unicast_port() as u32,
@@ -311,7 +336,13 @@ impl DomainParticipant {
         type_name: &str,
         qos: crate::qos::QosPolicy,
     ) -> Arc<Mutex<DataReader>> {
-        let entity_id = EntityId([0x00, 0x00, (self.next_reader_id & 0xFF) as u8, 0x07]);
+        let keyed = type_is_keyed(type_name);
+        let reader_kind = if keyed {
+            ENTITY_KIND_USER_READER_WITH_KEY
+        } else {
+            ENTITY_KIND_USER_READER_NO_KEY
+        };
+        let entity_id = EntityId([0x00, 0x00, (self.next_reader_id & 0xFF) as u8, reader_kind]);
         self.next_reader_id += 1;
         let guid = Guid::new(self.guid_prefix, entity_id.clone());
 
@@ -328,6 +359,8 @@ impl DomainParticipant {
 
         // Also register in endpoint database for SEDP
         let mut endpoint = LocalEndpoint::new_reader(guid, topic_name, type_name, qos);
+        endpoint.type_information = type_information_for(type_name).map(|bytes| bytes.to_vec());
+        endpoint.type_object = type_object_for(type_name);
         endpoint.unicast_locators.push(crate::types::Locator::from_ipv4(
             &self.transport.local_ip().to_string(),
             self.transport.user_unicast_port() as u32,

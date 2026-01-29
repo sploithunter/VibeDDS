@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from vibedds.constants import (
     SPDP_MULTICAST_ADDRESS,
-    spdp_multicast_port, spdp_unicast_port, user_unicast_port,
+    spdp_multicast_port, spdp_unicast_port, user_unicast_port, user_multicast_port,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,10 +58,12 @@ class UdpTransport:
         self._spdp_multicast_port = spdp_multicast_port(domain_id)
         self._metatraffic_unicast_port = spdp_unicast_port(domain_id, participant_id)
         self._user_unicast_port = user_unicast_port(domain_id, participant_id)
+        self._user_multicast_port = user_multicast_port(domain_id)
 
         self._spdp_mc_sock: socket.socket | None = None
         self._meta_uc_sock: socket.socket | None = None
         self._user_uc_sock: socket.socket | None = None
+        self._user_mc_sock: socket.socket | None = None
         self._send_sock: socket.socket | None = None
 
     @property
@@ -81,6 +83,7 @@ class UdpTransport:
         self._open_spdp_multicast()
         self._open_metatraffic_unicast()
         self._open_user_unicast()
+        self._open_user_multicast()
         self._open_send_socket()
         logger.info(
             "Transport opened: local_ip=%s, spdp_mc=%d, meta_uc=%d, user_uc=%d",
@@ -126,6 +129,23 @@ class UdpTransport:
         sock.setblocking(False)
         self._user_uc_sock = sock
 
+    def _open_user_multicast(self) -> None:
+        """Open user data multicast receive socket."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if sys.platform == "darwin":
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        sock.bind(("", self._user_multicast_port))
+
+        mreq = struct.pack(
+            "4s4s",
+            socket.inet_aton(SPDP_MULTICAST_ADDRESS),
+            socket.inet_aton("0.0.0.0"),
+        )
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+        sock.setblocking(False)
+        self._user_mc_sock = sock
+
     def _open_send_socket(self) -> None:
         """Open a socket for sending (multicast and unicast)."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -138,7 +158,7 @@ class UdpTransport:
     def close(self) -> None:
         """Close all sockets."""
         for sock in [self._spdp_mc_sock, self._meta_uc_sock,
-                     self._user_uc_sock, self._send_sock]:
+                     self._user_uc_sock, self._user_mc_sock, self._send_sock]:
             if sock:
                 try:
                     sock.close()
@@ -147,6 +167,7 @@ class UdpTransport:
         self._spdp_mc_sock = None
         self._meta_uc_sock = None
         self._user_uc_sock = None
+        self._user_mc_sock = None
         self._send_sock = None
 
     def send_multicast(self, data: bytes, port: int | None = None) -> None:
@@ -170,6 +191,8 @@ class UdpTransport:
             result["metatraffic_unicast"] = self._meta_uc_sock
         if self._user_uc_sock:
             result["user_unicast"] = self._user_uc_sock
+        if self._user_mc_sock:
+            result["user_multicast"] = self._user_mc_sock
         return result
 
     def recv_from(self, sock_name: str, bufsize: int = 65536) -> ReceivedPacket | None:

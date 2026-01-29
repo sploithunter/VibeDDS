@@ -29,6 +29,12 @@ venv/
 ENV/
 env/
 .venv/
+.venv-rti/
+.venv-tools/
+logs/
+
+# Third-party builds
+third_party/OpenDDS/
 
 # IDE
 .idea/

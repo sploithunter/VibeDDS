@@ -1,0 +1,17 @@
+enum ShapeFillKind {
+  SOLID_FILL,
+  TRANSPARENT_FILL,
+  HORIZONTAL_HATCH_FILL,
+  VERTICAL_HATCH_FILL
+};
+
+@topic
+@appendable
+struct ShapeType {
+  @key string<128> color;
+  long x;
+  long y;
+  long shapesize;
+  ShapeFillKind fillKind;
+  long angle;
+};

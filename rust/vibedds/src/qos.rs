@@ -1,5 +1,6 @@
 /// QoS policies and RxO (Requested/Offered) compatibility matching.
 
+use crate::cdr::{CdrSerializer, Endian};
 use crate::types::Duration;
 
 /// Reliability QoS kind.
@@ -114,6 +115,23 @@ impl HistoryKind {
             _ => None,
         }
     }
+}
+
+/// DataRepresentationId values (DDS-XTypes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i16)]
+pub enum DataRepresentationId {
+    Xcdr1 = 0,
+    Xml = 1,
+    Xcdr2 = 2,
+}
+
+/// TypeConsistencyKind values (DDS-XTypes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum TypeConsistencyKind {
+    DisallowTypeCoercion = 0,
+    AllowTypeCoercion = 1,
 }
 
 /// Aggregated QoS settings for an endpoint.
@@ -252,6 +270,169 @@ pub fn deserialize_durability_qos(data: &[u8]) -> Option<DurabilityKind> {
     }
     let kind = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
     DurabilityKind::from_u32(kind)
+}
+
+/// Serialize ownership QoS for SEDP parameter list.
+pub fn serialize_ownership_qos(qos: &QosPolicy, endian: Endian) -> Vec<u8> {
+    let mut ser = CdrSerializer::new(endian);
+    ser.set_origin();
+    ser.write_u32(qos.ownership as u32);
+    ser.into_bytes()
+}
+
+/// Serialize liveliness QoS for SEDP parameter list.
+pub fn serialize_liveliness_qos(qos: &QosPolicy, endian: Endian) -> Vec<u8> {
+    let mut ser = CdrSerializer::new(endian);
+    ser.set_origin();
+    ser.write_u32(qos.liveliness as u32);
+    ser.write_i32(qos.liveliness_lease_duration.seconds);
+    ser.write_u32(qos.liveliness_lease_duration.fraction);
+    ser.into_bytes()
+}
+
+/// Serialize destination order QoS for SEDP parameter list.
+pub fn serialize_destination_order_qos(qos: &QosPolicy, endian: Endian) -> Vec<u8> {
+    let mut ser = CdrSerializer::new(endian);
+    ser.set_origin();
+    ser.write_u32(qos.destination_order as u32);
+    ser.into_bytes()
+}
+
+/// Serialize deadline QoS for SEDP parameter list.
+pub fn serialize_deadline_qos(qos: &QosPolicy, endian: Endian) -> Vec<u8> {
+    let mut ser = CdrSerializer::new(endian);
+    ser.set_origin();
+    ser.write_i32(qos.deadline_period.seconds);
+    ser.write_u32(qos.deadline_period.fraction);
+    ser.into_bytes()
+}
+
+/// Serialize history QoS for SEDP parameter list.
+pub fn serialize_history_qos(qos: &QosPolicy, endian: Endian) -> Vec<u8> {
+    let mut ser = CdrSerializer::new(endian);
+    ser.set_origin();
+    ser.write_u32(qos.history as u32);
+    ser.write_u32(qos.history_depth as u32);
+    ser.into_bytes()
+}
+
+/// Serialize partition QoS for SEDP parameter list.
+pub fn serialize_partition_qos(qos: &QosPolicy, endian: Endian) -> Vec<u8> {
+    let mut ser = CdrSerializer::new(endian);
+    ser.set_origin();
+    match &qos.partition {
+        Some(parts) => {
+            ser.write_u32(parts.len() as u32);
+            for part in parts {
+                ser.write_string(part);
+            }
+        }
+        None => {
+            ser.write_u32(0);
+        }
+    }
+    ser.into_bytes()
+}
+
+/// Serialize DataRepresentationQosPolicy (sequence<short>) in XCDR1.
+pub fn serialize_data_representation_qos(
+    representations: &[DataRepresentationId],
+    endian: Endian,
+) -> Vec<u8> {
+    let mut ser = CdrSerializer::new(endian);
+    ser.set_origin();
+    ser.write_u32(representations.len() as u32);
+    for rep in representations {
+        ser.write_i16(*rep as i16);
+    }
+    ser.into_bytes()
+}
+
+pub const RTI_DATA_REPRESENTATION_DEFAULT: [u8; 12] =
+    [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00];
+
+pub const RTI_TYPE_CONSISTENCY_DEFAULT: [u8; 8] =
+    [0x01, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00];
+
+/// Serialize DataRepresentationQosPolicy using RTI-observed layout.
+pub fn serialize_data_representation_qos_rti(
+    representations: &[DataRepresentationId],
+    endian: Endian,
+    tail: Option<u32>,
+) -> Vec<u8> {
+    if representations == [DataRepresentationId::Xcdr1] && tail.is_none() {
+        return RTI_DATA_REPRESENTATION_DEFAULT.to_vec();
+    }
+    let mut ser = CdrSerializer::new(endian);
+    ser.set_origin();
+    ser.write_u32(representations.len() as u32);
+    for rep in representations {
+        ser.write_u32(*rep as u32);
+    }
+    if let Some(val) = tail {
+        ser.write_u32(val);
+    }
+    ser.into_bytes()
+}
+
+/// Serialize TypeConsistencyEnforcementQosPolicy in XCDR1.
+pub fn serialize_type_consistency_enforcement_qos(
+    kind: TypeConsistencyKind,
+    ignore_sequence_bounds: bool,
+    ignore_string_bounds: bool,
+    ignore_member_names: bool,
+    prevent_type_widening: bool,
+    force_type_validation: bool,
+    endian: Endian,
+) -> Vec<u8> {
+    let mut ser = CdrSerializer::new(endian);
+    ser.set_origin();
+    ser.write_i32(kind as i32);
+    ser.write_bool(ignore_sequence_bounds);
+    ser.write_bool(ignore_string_bounds);
+    ser.write_bool(ignore_member_names);
+    ser.write_bool(prevent_type_widening);
+    ser.write_bool(force_type_validation);
+    ser.into_bytes()
+}
+
+/// Serialize TypeConsistencyEnforcementQosPolicy in a compact RTI-style form.
+pub fn serialize_type_consistency_enforcement_qos_compact(
+    kind: TypeConsistencyKind,
+    ignore_sequence_bounds: bool,
+    ignore_string_bounds: bool,
+    ignore_member_names: bool,
+    prevent_type_widening: bool,
+    force_type_validation: bool,
+    mask: Option<u32>,
+    endian: Endian,
+) -> Vec<u8> {
+    let derived_mask = if let Some(val) = mask {
+        val
+    } else {
+        let mut val = 0u32;
+        if ignore_sequence_bounds {
+            val |= 1 << 0;
+        }
+        if ignore_string_bounds {
+            val |= 1 << 1;
+        }
+        if ignore_member_names {
+            val |= 1 << 2;
+        }
+        if prevent_type_widening {
+            val |= 1 << 3;
+        }
+        if force_type_validation {
+            val |= 1 << 4;
+        }
+        val
+    };
+    let mut ser = CdrSerializer::new(endian);
+    ser.set_origin();
+    ser.write_u32(kind as u32);
+    ser.write_u32(derived_mask);
+    ser.into_bytes()
 }
 
 #[cfg(test)]

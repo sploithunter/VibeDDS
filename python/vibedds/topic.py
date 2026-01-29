@@ -13,6 +13,9 @@ class Topic:
     name: str
     type_name: str
     qos: QosPolicy | None = None
+    type_information: bytes | None = None
+    type_object: bytes | None = None
+    keyed: bool | None = None
 
     def __hash__(self) -> int:
         return hash((self.name, self.type_name))
@@ -38,6 +41,12 @@ class TopicRegistry:
                     f"Topic '{topic.name}' already registered with type "
                     f"'{existing.type_name}', cannot re-register with '{topic.type_name}'"
                 )
+            if existing.type_information is None and topic.type_information is not None:
+                existing.type_information = topic.type_information
+            if existing.type_object is None and topic.type_object is not None:
+                existing.type_object = topic.type_object
+            if existing.keyed is None and topic.keyed is not None:
+                existing.keyed = topic.keyed
             return existing
         self._topics[topic.name] = topic
         return topic

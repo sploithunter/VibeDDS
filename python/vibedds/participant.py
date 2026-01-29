@@ -28,10 +28,11 @@ from vibedds.types import GuidPrefix, EntityId, Guid, Locator
 from vibedds.transport import UdpTransport
 from vibedds.spdp import SPDPWriter, SPDPReader, ParticipantDatabase, DiscoveredParticipant
 from vibedds.wire import RtpsMessageParser
-from vibedds.messages import DataSubmessage, HeartbeatSubmessage
-from vibedds.sedp import SEDPProtocol, EndpointDatabase, LocalEndpoint
+from vibedds.messages import DataSubmessage, HeartbeatSubmessage, AckNackSubmessage
+from vibedds.sedp import SEDPProtocol, EndpointDatabase, LocalEndpoint, SedpInteropOptions
 from vibedds.qos import QosPolicy, ReliabilityKind, DurabilityKind
 from vibedds.topic import Topic, TopicRegistry
+from vibedds.type_support import type_information_for, type_object_for, is_keyed_type
 from vibedds.endpoint import DataWriter, DataReader, EntityIdAllocator
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,7 @@ class DomainParticipant:
         domain_id: int = 0,
         participant_id: int = 0,
         guid_prefix: GuidPrefix | None = None,
+        sedp_options: SedpInteropOptions | None = None,
     ):
         self.domain_id = domain_id
         self.participant_id = participant_id
@@ -80,7 +82,11 @@ class DomainParticipant:
 
         # SEDP
         self._endpoint_db = EndpointDatabase()
-        self._sedp = SEDPProtocol(self.guid_prefix, self._endpoint_db)
+        self._sedp = SEDPProtocol(
+            self.guid_prefix,
+            self._endpoint_db,
+            interop=sedp_options,
+        )
         self._topic_registry = TopicRegistry()
         self._entity_allocator = EntityIdAllocator()
 
@@ -119,9 +125,30 @@ class DomainParticipant:
         """Register a handler for DATA submessages from a specific writer entity."""
         self._message_handlers.setdefault(writer_entity_id, []).append(handler)
 
-    def create_topic(self, name: str, type_name: str, qos: QosPolicy | None = None) -> Topic:
+    def create_topic(
+        self,
+        name: str,
+        type_name: str,
+        qos: QosPolicy | None = None,
+        type_information: bytes | None = None,
+        type_object: bytes | None = None,
+        keyed: bool | None = None,
+    ) -> Topic:
         """Register a topic."""
-        topic = Topic(name=name, type_name=type_name, qos=qos)
+        if type_information is None:
+            type_information = type_information_for(type_name)
+        if type_object is None:
+            type_object = type_object_for(type_name)
+        if keyed is None:
+            keyed = is_keyed_type(type_name)
+        topic = Topic(
+            name=name,
+            type_name=type_name,
+            qos=qos,
+            type_information=type_information,
+            type_object=type_object,
+            keyed=keyed,
+        )
         return self._topic_registry.register(topic)
 
     def create_writer(self, topic: Topic, qos: QosPolicy | None = None) -> DataWriter:
@@ -129,7 +156,7 @@ class DomainParticipant:
         if qos is None:
             qos = topic.qos or QosPolicy()
 
-        entity_id = self._entity_allocator.allocate_writer()
+        entity_id = self._entity_allocator.allocate_writer(with_key=bool(topic.keyed))
         guid = Guid(self.guid_prefix, entity_id)
 
         writer = DataWriter(
@@ -154,6 +181,8 @@ class DomainParticipant:
                 Locator.from_ipv4(self._transport.local_ip,
                                   self._transport.user_unicast_port),
             ],
+            type_information=topic.type_information,
+            type_object=topic.type_object,
         )
         self._endpoint_db.add_local_writer(local_ep)
         self._sedp.announce_endpoint(local_ep)
@@ -168,7 +197,7 @@ class DomainParticipant:
         if qos is None:
             qos = topic.qos or QosPolicy()
 
-        entity_id = self._entity_allocator.allocate_reader()
+        entity_id = self._entity_allocator.allocate_reader(with_key=bool(topic.keyed))
         guid = Guid(self.guid_prefix, entity_id)
 
         reader = DataReader(guid=guid, topic=topic, qos=qos)
@@ -191,6 +220,8 @@ class DomainParticipant:
                 Locator.from_ipv4(self._transport.local_ip,
                                   self._transport.user_unicast_port),
             ],
+            type_information=topic.type_information,
+            type_object=topic.type_object,
         )
         self._endpoint_db.add_local_reader(local_ep)
         self._sedp.announce_endpoint(local_ep)
@@ -291,10 +322,12 @@ class DomainParticipant:
             return
 
         if socket_name == "spdp_multicast":
-            self._handle_spdp_packet(data, addr, port)
+            if not self._handle_spdp_packet(data, addr, port):
+                # Some stacks send SEDP/heartbeats over metatraffic multicast.
+                self._handle_metatraffic_packet(data, addr, port)
         elif socket_name == "metatraffic_unicast":
             self._handle_metatraffic_packet(data, addr, port)
-        elif socket_name == "user_unicast":
+        elif socket_name in ("user_unicast", "user_multicast"):
             self._handle_user_packet(data, addr, port)
 
     def _on_new_participant(self, pd: DiscoveredParticipant) -> None:
@@ -302,24 +335,35 @@ class DomainParticipant:
         self._sedp.on_participant_discovered(pd)
 
         # Send SEDP announcements to the new participant
-        if pd.metatraffic_unicast_locators:
+        dest_locators = pd.metatraffic_unicast_locators + pd.metatraffic_multicast_locators
+        if pd.spdp_source_addr and pd.spdp_source_port:
+            try:
+                dest_locators = [
+                    Locator.from_ipv4(pd.spdp_source_addr, pd.spdp_source_port)
+                ] + dest_locators
+            except Exception:
+                pass
+        if dest_locators:
             messages = self._sedp.build_announcement_messages(
-                pd.guid_prefix, pd.metatraffic_unicast_locators
+                pd.guid_prefix, dest_locators
             )
             logger.info("Sending %d SEDP messages to %s", len(messages),
                        [(m[1], m[2]) for m in messages])
             for msg_bytes, addr, port in messages:
                 self._transport.send_unicast(msg_bytes, addr, port)
 
-    def _handle_spdp_packet(self, data: bytes, addr: str, port: int) -> None:
-        """Handle SPDP multicast packet."""
+    def _handle_spdp_packet(self, data: bytes, addr: str, port: int) -> bool:
+        """Handle SPDP multicast packet. Returns True if consumed."""
         participant = SPDPReader.parse_announcement(data)
         if participant is None:
-            return
+            return False
+
+        participant.spdp_source_addr = addr
+        participant.spdp_source_port = port
 
         # Skip our own announcements
         if participant.guid_prefix == self.guid_prefix:
-            return
+            return True
 
         is_new = self._participant_db.update(participant)
         if is_new:
@@ -327,8 +371,15 @@ class DomainParticipant:
                 "Discovered participant: %s from %s:%d",
                 participant.guid_prefix, addr, port,
             )
+            logger.debug(
+                "Participant locators: meta_uc=%s meta_mc=%s user_uc=%s",
+                [(l.ipv4_str, l.port) for l in participant.metatraffic_unicast_locators],
+                [(l.ipv4_str, l.port) for l in participant.metatraffic_multicast_locators],
+                [(l.ipv4_str, l.port) for l in participant.default_unicast_locators],
+            )
             for cb in self._on_participant_discovered:
                 cb(participant)
+        return True
 
     def _handle_metatraffic_packet(self, data: bytes, addr: str, port: int) -> None:
         """Handle metatraffic unicast packet (SEDP, etc.)."""
@@ -358,6 +409,19 @@ class DomainParticipant:
                         dest_port = port
                     for resp_bytes in responses:
                         self._transport.send_unicast(resp_bytes, dest_addr, dest_port)
+            elif isinstance(sm, AckNackSubmessage):
+                responses = self._sedp.handle_acknack(sm, msg.header.guid_prefix)
+                if responses:
+                    pd = self._participant_db.get(msg.header.guid_prefix)
+                    if pd and pd.metatraffic_unicast_locators:
+                        loc = pd.metatraffic_unicast_locators[0]
+                        dest_addr = loc.ipv4_str or addr
+                        dest_port = loc.port
+                    else:
+                        dest_addr = addr
+                        dest_port = port
+                    for resp_bytes in responses:
+                        self._transport.send_unicast(resp_bytes, dest_addr, dest_port)
 
     def _handle_user_packet(self, data: bytes, addr: str, port: int) -> None:
         """Handle user data unicast packet."""
@@ -368,6 +432,10 @@ class DomainParticipant:
 
         for sm in msg.submessages:
             if isinstance(sm, DataSubmessage):
+                logger.debug(
+                    "User DATA from %s:%d writer=%s reader=%s",
+                    addr, port, sm.writer_id, sm.reader_id,
+                )
                 # Try registered handlers first
                 writer_id = sm.writer_id.value
                 handlers = self._message_handlers.get(writer_id, [])

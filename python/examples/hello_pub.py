@@ -23,8 +23,20 @@ from vibedds.type_support import HelloWorldType
 def main():
     parser = argparse.ArgumentParser(description="HelloWorld Publisher")
     parser.add_argument("--domain", type=int, default=0)
+    parser.add_argument("--participant", type=int, default=0, help="Participant ID (default: 0)")
     parser.add_argument("--count", type=int, default=0, help="0 = infinite")
     parser.add_argument("--interval", type=float, default=1.0)
+    parser.add_argument("--topic", default="HelloWorldTopic", help="DDS topic name")
+    parser.add_argument(
+        "--partition",
+        default="",
+        help="DDS partition name(s), comma-separated (empty = default)",
+    )
+    parser.add_argument(
+        "--reliable",
+        action="store_true",
+        help="Offer RELIABLE reliability (default: BEST_EFFORT)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -33,11 +45,15 @@ def main():
         format="%(asctime)s %(name)s %(levelname)s: %(message)s",
     )
 
-    dp = DomainParticipant(domain_id=args.domain)
+    dp = DomainParticipant(domain_id=args.domain, participant_id=args.participant)
     dp.start()
 
-    topic = dp.create_topic("HelloWorldTopic", HelloWorldType.TYPE_NAME)
-    writer = dp.create_writer(topic, QosPolicy(reliability=ReliabilityKind.BEST_EFFORT))
+    topic = dp.create_topic(args.topic, HelloWorldType.TYPE_NAME)
+    reliability = ReliabilityKind.RELIABLE if args.reliable else ReliabilityKind.BEST_EFFORT
+    qos = QosPolicy(reliability=reliability)
+    if args.partition:
+        qos.partition = [p for p in (part.strip() for part in args.partition.split(",")) if p]
+    writer = dp.create_writer(topic, qos)
 
     print(f"HelloWorld Publisher started on domain {args.domain}")
     print(f"  GUID: {dp.guid_prefix}")
