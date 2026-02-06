@@ -42,9 +42,7 @@ Wednesday's CKO schedule had the research team on an excursion in San Francisco 
 
 We came back for Karaoke Night at HQ, which started at 7 PM. At 7:55 PM, while somewhere in the building people were singing, the next commit landed: Stage 6e, 7,600 additional lines covering data pub/sub, the Rust participant implementation, hello_pub/hello_sub examples, RTI interop test infrastructure, and wire compatibility tests. The file timestamps show the agent kept building through the evening: Rust SPDP at 7:45 PM, the full Rust library scaffolding by 8:30 PM.
 
-But the agent wasn't done. File timestamps show it kept working: wire compatibility tests at 8:22 PM, Rust endpoint module at 8:31 PM, the RTI interop test suite at 10:05 PM. We left it running and went to bed. By morning, VibeDDS could discover itself, exchange endpoint metadata, and publish/subscribe data between its own instances.
-
-An important clarification: the agent doesn't run continuously. Each Claude Code session runs until it finishes or hits the context window limit, then stops. The file timestamps reveal distinct session clusters: about 1 hour on Tuesday afternoon, then roughly 4.5 hours on Wednesday evening. The wall clock from first PDF to working DDS was about 30 hours, but the agent's actual runtime was closer to **5-6 hours** — the rest was the laptop sitting idle while we were in San Francisco, at dinner, and at karaoke.
+The agent kept going after karaoke: wire compatibility tests at 8:22 PM, Rust endpoint module at 8:31 PM, the RTI interop test suite at 10:05 PM. We left it running and went to bed.
 
 ```
 Jan 28 16:50  Initial commit: Python + Rust libraries, specs     98,767 lines
@@ -52,7 +50,9 @@ Jan 28 19:00  README                                                 139 lines
 Jan 28 19:55  Stage 6e: Data pub/sub + RTI interop improvements    7,625 lines
 ```
 
-We left it running and went to bed. By the end of the first day, VibeDDS could discover itself, exchange endpoint metadata, and publish/subscribe data between its own instances. The next challenge was making Connext accept it as a peer.
+An important clarification: the agent doesn't run continuously. Each Claude Code session runs until it finishes or hits the context window limit, then stops. The file timestamps reveal distinct session clusters — about 1 hour on Tuesday afternoon, then roughly 4.5 hours on Wednesday evening. The wall clock from first PDF to working DDS was about 30 hours, but the agent's actual runtime was closer to **5-6 hours**. The rest was the laptop sitting idle while we were in San Francisco, at dinner, and at karaoke.
+
+By morning, VibeDDS could discover itself, exchange endpoint metadata, and publish/subscribe data between its own instances. The next challenge was making Connext accept it as a peer.
 
 ## Day 2: the interop wall (Thursday, January 29)
 
