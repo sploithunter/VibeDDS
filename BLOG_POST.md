@@ -162,7 +162,14 @@ Total active development time: **~11.5 hours.** The 7-day gap between January 29
 
 **Compiled binary:** The Rust library builds to a **1,016 KB** release binary — a complete DDS implementation with SPDP, SEDP, pub/sub, and RTI interoperability in under a megabyte.
 
-**Human involvement estimate:** 4-5 hours of active guidance out of ~11.5 hours of total development time. The human wrote zero lines of code. The human's role was architect, domain expert, and occasionally the voice saying "you're looking in the wrong place."
+**Human involvement:** 4-5 hours of active guidance out of ~11.5 hours of total development time. The human wrote zero lines of code. Not a single line. But the human's role was critical — it just wasn't coding:
+
+- **Testing discipline.** The agent consistently wanted to skip tests and declare victory. Left to its own devices, it would sprint to "working" code that had bugs it hadn't checked for. The human's most important recurring intervention was insisting on test-early-test-often: unit tests for every module, end-to-end tests at every integration point, and interop tests before declaring anything done.
+- **Debugging direction.** The human suggested using UDP sniffers to examine raw packets. The human explained how DDS discovery actually works — the SPDP/SEDP handshake sequence, what metatraffic ports are for, why a socket bound to the wrong address would be deaf. This domain knowledge guided the agent toward productive debugging rather than flailing.
+- **Architecture decisions.** Python first, Rust second. Test against RTI, not just against yourself. Use distinct participant IDs to avoid port collisions. These weren't coding decisions — they were strategy.
+- **Spec adherence.** The agent would sometimes drift from the specification, implementing what seemed reasonable rather than what the RTPS spec actually said. The human's role was to push back: read the spec, pay attention to the spec, the spec is the ground truth.
+
+The pattern is clear: the human contributed zero code but 100% of the engineering judgment. The agent was the hands; the human was the experience.
 
 **Specifications consumed:** 9 OMG spec PDFs (19 MB total), converted to 76,000 lines of markdown, referenced continuously by the agent during implementation.
 
