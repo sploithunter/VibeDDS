@@ -238,4 +238,4 @@ We should be prepared.
 
 ---
 
-*VibeDDS is open source. The full commit history, interop test results, and debugging writeup are available at [github.com/sploithunter/VibeDDS](https://github.com/sploithunter/VibeDDS). The project was built using Claude Code with Claude Opus 4.5 and 4.6.*
+*The VibeDDS repository is currently private but can be made available to RTI teams on request, or migrated to RTI Bitbucket for internal examination. The full commit history, file timestamps, interop test results, and debugging writeup are preserved in the repo. The project was built using Claude Code with Claude Opus 4.5 and 4.6, with additional sessions attempted in Codex with GPT-5.2 during the CKO debugging phase.*
