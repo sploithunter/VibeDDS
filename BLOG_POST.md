@@ -32,11 +32,9 @@ Before writing a single line of code, the foundation was laid:
 
 ## Day 1: from zero to discovery (Wednesday, January 28)
 
-Wednesday's CKO schedule had the research team in working sessions from 10 AM to 6 PM, with a research excursion in the afternoon. Between sessions, the agent was running. At 4:50 PM — right as the day sessions were wrapping up — the first commit landed: 62 files, nearly 99,000 lines (including the converted spec markdowns). The actual library code was about 3,400 lines of Python and 2,000 lines of Rust, covering CDR serialization, RTPS message building/parsing, SPDP discovery, and the beginnings of SEDP.
+Wednesday's CKO schedule had the research team on an excursion in San Francisco for the entire day. The laptop was left running at headquarters in Sunnyvale. By the time we got back for Karaoke Night, the agent had been working unsupervised all day. At 4:50 PM, the first commit had landed: 62 files, nearly 99,000 lines (including the converted spec markdowns). The actual library code was about 3,400 lines of Python and 2,000 lines of Rust, covering CDR serialization, RTPS message building/parsing, SPDP discovery, and the beginnings of SEDP.
 
-Then we left for the hotel to change before the evening event.
-
-Karaoke Night at HQ started at 7 PM. At 7:55 PM, while somewhere in the building people were singing, the second commit landed: Stage 6e, 7,600 additional lines covering data pub/sub, the Rust participant implementation, hello_pub/hello_sub examples, RTI interop test infrastructure, and wire compatibility tests. The agent had gone from zero to a DDS implementation with working self-discovery and data exchange in a single afternoon.
+Karaoke Night at HQ started at 7 PM. At 7:55 PM, while somewhere in the building people were singing, the next commit landed: Stage 6e, 7,600 additional lines covering data pub/sub, the Rust participant implementation, hello_pub/hello_sub examples, RTI interop test infrastructure, and wire compatibility tests. The agent had gone from zero to a DDS implementation with working self-discovery and data exchange while we were across the bay.
 
 ```
 Jan 28 16:50  Initial commit: Python + Rust libraries, specs     98,767 lines
