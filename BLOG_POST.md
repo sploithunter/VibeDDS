@@ -30,11 +30,13 @@ Before writing a single line of code, the foundation was laid:
 
 **CLAUDE.md as the constitution.** A `CLAUDE.md` file established the agent's operating instructions: test early and often, write unit tests for every module, write end-to-end tests for every integration point, and build incrementally through defined stages (CDR serialization, then RTPS messages, then SPDP discovery, then SEDP endpoint discovery, then pub/sub data exchange). This file persisted across sessions and acted as the agent's memory of project conventions. This mattered because the agent's natural tendency is to sprint toward the goal and declare victory — the `CLAUDE.md` was the guardrail that forced discipline.
 
-## Day 1: from zero to discovery (January 27-28)
+## Day 1: from zero to discovery (Wednesday, January 28)
 
-The initial commit landed on January 28 at 4:50 PM with 62 files and nearly 99,000 lines (including the converted spec markdowns). The actual library code was about 3,400 lines of Python and 2,000 lines of Rust — covering CDR serialization, RTPS message building/parsing, SPDP discovery, and the beginnings of SEDP.
+Wednesday's CKO schedule had the research team in working sessions from 10 AM to 6 PM, with a research excursion in the afternoon. Between sessions, the agent was running. At 4:50 PM — right as the day sessions were wrapping up — the first commit landed: 62 files, nearly 99,000 lines (including the converted spec markdowns). The actual library code was about 3,400 lines of Python and 2,000 lines of Rust, covering CDR serialization, RTPS message building/parsing, SPDP discovery, and the beginnings of SEDP.
 
-Three hours later, by 7:55 PM, Stage 6e was committed: 7,600 additional lines covering data pub/sub, the Rust participant implementation, hello_pub/hello_sub examples, RTI interop test infrastructure, and wire compatibility tests. The agent had gone from zero to a DDS implementation with working self-discovery and data exchange in a single afternoon session.
+Then we left for the hotel to change before the evening event.
+
+Karaoke Night at HQ started at 7 PM. At 7:55 PM, while somewhere in the building people were singing, the second commit landed: Stage 6e, 7,600 additional lines covering data pub/sub, the Rust participant implementation, hello_pub/hello_sub examples, RTI interop test infrastructure, and wire compatibility tests. The agent had gone from zero to a DDS implementation with working self-discovery and data exchange in a single afternoon.
 
 ```
 Jan 28 16:50  Initial commit: Python + Rust libraries, specs     98,767 lines
@@ -42,28 +44,32 @@ Jan 28 19:00  README                                                 139 lines
 Jan 28 19:55  Stage 6e: Data pub/sub + RTI interop improvements    7,625 lines
 ```
 
-By the end of the first day, VibeDDS could discover itself, exchange endpoint metadata, and publish/subscribe data between its own instances. The next challenge was making RTI Connext accept it as a peer.
+We left it running and went to bed. By the end of the first day, VibeDDS could discover itself, exchange endpoint metadata, and publish/subscribe data between its own instances. The next challenge was making Connext accept it as a peer.
 
-## Day 2: the interop wall (January 29)
+## Day 2: the interop wall (Thursday, January 29)
+
+Thursday was packed: Genesis engagement at 8 AM, guest speakers from i3 and Wabtec, the company photo at 12:45, an AI/Research Alignment session at 2:30, and the Celebration Dinner from 7 to 11 PM.
+
+Between all of that, the agent was working the interop problem.
 
 RTI's `rtiddsspy` tool could see VibeDDS's published data. VibeDDS to RTI worked. But the reverse direction — RTI publishing data that VibeDDS could receive — was completely broken. RTI reported **zero matched subscriptions**. It could see VibeDDS's reader in SEDP discovery but refused to send data to it.
 
-The agent spent the day systematically attacking the problem. Two commits show the progression:
+The 8:59 AM commit — squeezed in before the morning sessions — shows the first systematic attempt: enhanced SEDP with comprehensive QoS PIDs. By 3:28 PM, between the afternoon guest speakers, a second commit landed with 4,300 lines of interop tooling and documentation.
 
 ```
 Jan 29 08:59  Enhance SEDP for RTI interop - QoS PIDs              1,451 lines
 Jan 29 15:28  Document interop progress and add tooling             4,313 lines
 ```
 
-The agent tried six different SEDP configurations, varying which QoS parameters were included, how XTypes metadata was formatted, and which type information blobs were sent. It captured pcap traces of RTI-to-RTI traffic and compared them byte-by-byte with VibeDDS-to-RTI traffic. It built diagnostic tools — an SEDP sniffer, a metatraffic analyzer, a matching diagnostic — that could interrogate RTI's internal state.
+The agent tried six different SEDP configurations, varying which QoS parameters were included, how XTypes metadata was formatted, and which type information blobs were sent. It captured pcap traces of RTI-to-RTI traffic and compared them byte-by-byte with VibeDDS-to-RTI traffic. It built diagnostic tools — an SEDP sniffer, a metatraffic analyzer, a matching diagnostic — that could interrogate Connext's internal state.
 
 All six configurations failed identically. RTI still showed 0 matched subscriptions.
 
-This is where we got stuck.
+We left it running through the Celebration Dinner. It was still stuck when we went back to the hotel. This is where we got stuck.
 
 ## The gap: January 29 to February 5
 
-The git log tells the real story: zero commits for an entire week. The project was stuck, and rather than throw more hours at it, it simply sat idle. Both Claude (Opus 4.5) and GPT-5.2 (via Codex) had been pointed at the problem during CKO. The agent sessions explored increasingly exotic hypotheses:
+Friday was the flight home. After that, the git log tells the real story: zero commits for an entire week. The project was stuck, and rather than throw more hours at it, it simply sat idle. Both Claude (Opus 4.5) and GPT-5.2 (via Codex) had been pointed at the problem during CKO. The agent sessions explored increasingly exotic hypotheses:
 
 - Maybe RTI required specific vendor PIDs (proprietary parameter IDs that RTI includes in its own traffic)?
 - Maybe the TypeObject blob needed to be zlib-compressed in a specific way?
