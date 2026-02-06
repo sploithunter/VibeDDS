@@ -2,15 +2,19 @@
 
 *How an AI agent built a working DDS middleware in Python and Rust — and achieved full interoperability with RTI Connext DDS in under 10 days of wall-clock time.*
 
-## The pitch
+## How it started
 
-Anthropic recently published [a case study](https://www.anthropic.com/engineering/building-c-compiler) about building a C compiler using "parallel Claudes" — nearly 2,000 Claude Code sessions producing a 100,000-line compiler. The project demonstrated that AI agents can tackle complex systems software when given the right scaffolding.
+This story begins at RTI's Company Kickoff (CKO) in the last week of January 2026. The research team was together, and conversations kept circling back to the same theme: automated software development is becoming shockingly capable, but it's hard to convince people — even technical people — of just how far it's come. Anthropic had recently published [a case study](https://www.anthropic.com/engineering/building-c-compiler) about building a C compiler using "parallel Claudes" — nearly 2,000 Claude Code sessions producing a 100,000-line compiler. Impressive, but compilers are a well-understood domain with clear test oracles. What about something messier? Something with wire protocols, interoperability requirements, and a real-world implementation to validate against?
 
-We wanted to test that idea against something closer to our world: the DDS (Data Distribution Service) wire protocol. DDS is a publish-subscribe middleware standard governed by the OMG, used in defense, autonomous vehicles, robotics, and industrial IoT. The canonical implementation is RTI Connext DDS, a commercial product representing decades of engineering. The RTPS wire protocol specification alone runs to 282 pages. Getting a from-scratch implementation to interoperate with RTI Connext is not a matter of passing a test suite you wrote yourself — RTI's implementation is the ground truth, and it will reject your packets for reasons buried in spec sections you haven't read yet.
+Someone floated a thought experiment: what if you tried to vibe code a DDS implementation?
+
+DDS is a publish-subscribe middleware standard governed by the OMG, used in defense, autonomous vehicles, robotics, and industrial IoT. RTI Connext DDS — our own product — represents decades of engineering. The RTPS wire protocol specification alone runs to 282 pages. Getting a from-scratch implementation to interoperate with RTI Connext is not a matter of passing a test suite you wrote yourself — RTI's implementation is the ground truth, and it will reject your packets for reasons buried in spec sections you haven't read yet.
+
+The thought experiment turned into an actual experiment. Between CKO sessions, on hotel Wi-Fi, VibeDDS was born.
 
 Could an AI agent, guided by a human who understands the domain but doesn't write the code, build a working DDS implementation and achieve interoperability with RTI Connext?
 
-The answer is yes. VibeDDS is a ~12,000-line DDS implementation (4,400 lines of Python, 7,600 lines of Rust) that achieves full bidirectional interoperability with RTI Connext DDS 7.3.0 across all six directed paths: Python to RTI, RTI to Python, Rust to RTI, RTI to Rust, Rust to Python, and Python to Rust.
+The answer is yes. VibeDDS is a 25,595-line project across 108 files — 4,400 lines of Python library, 7,600 lines of Rust library, and the rest in tests, interop diagnostics, examples, and tooling. The Rust implementation compiles to a 1 MB static binary. It achieves full bidirectional interoperability with RTI Connext DDS 7.3.0 across all six directed paths: Python to RTI, RTI to Python, Rust to RTI, RTI to Rust, Rust to Python, and Python to Rust.
 
 The total human effort was approximately 4-5 hours of active involvement spread across 10 calendar days. The agent wrote essentially all of the code.
 
@@ -135,18 +139,25 @@ This is where the "prototype in Python, port to Rust" strategy paid off. Two of 
 | Feb 6 AM | 1h 40m | Python↔RTI interop fully working |
 | Feb 6 AM | 48m | Rust port + 6-way cross-compatibility |
 
-**Code produced:**
+**Code produced (25,595 lines across 108 files):**
 
-| Component | Lines |
-|-----------|-------|
-| Python library | 4,398 |
-| Rust library | 7,578 |
-| Python tests | 5,477 |
-| Rust tests | 485 |
-| Interop tests & diagnostics | 3,704 |
-| Examples | 1,528 |
-| Scripts & tools | 1,227 |
-| **Total** | **~24,400** |
+| | Lines | Files |
+|---|------:|------:|
+| **Python Implementation** | **10,846** | |
+| Library (vibedds/) | 4,398 | 15 |
+| Tests | 5,477 | 12 |
+| Examples | 971 | 10 |
+| **Rust Implementation** | **8,620** | |
+| Library (src/) | 7,578 | 14 |
+| Tests | 485 | 1 |
+| Examples | 557 | 6 |
+| **Other** | **6,129** | |
+| Scripts & tools | 1,227 | 7 |
+| RTI interop test suite | 3,704 | 22 |
+| Documentation | 1,187 | 6 |
+| Config | 11 | 1 |
+
+**Compiled binary:** The Rust library builds to a **1,016 KB** release binary — a complete DDS implementation with SPDP, SEDP, pub/sub, and RTI interoperability in under a megabyte.
 
 **Human involvement estimate:** 4-5 hours of active guidance (architecture decisions, debugging direction, "have you checked the transport layer?") out of roughly 15 hours of total agent runtime. The human wrote zero lines of code. The human's role was architect, domain expert, and occasionally the voice saying "you're looking in the wrong place."
 
