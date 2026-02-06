@@ -107,6 +107,7 @@ const PG: u16 = 2;
 const D0: u16 = 0;
 const D1: u16 = 10;
 const D2: u16 = 1;
+const D3: u16 = 11;
 
 pub fn spdp_multicast_port(domain_id: u16) -> u16 {
     PB + DG * domain_id + D0
@@ -121,7 +122,7 @@ pub fn user_multicast_port(domain_id: u16) -> u16 {
 }
 
 pub fn user_unicast_port(domain_id: u16, participant_id: u16) -> u16 {
-    PB + DG * domain_id + D2 + PG * participant_id
+    PB + DG * domain_id + D3 + PG * participant_id
 }
 
 // Encapsulation schemes
@@ -152,7 +153,7 @@ mod tests {
 
     #[test]
     fn test_user_unicast_port() {
-        assert_eq!(user_unicast_port(0, 0), 7401);
-        assert_eq!(user_unicast_port(0, 1), 7403);
+        assert_eq!(user_unicast_port(0, 0), 7411);
+        assert_eq!(user_unicast_port(0, 1), 7413);
     }
 }

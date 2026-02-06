@@ -825,7 +825,7 @@ mod tests {
         // Verify transport has correct ports for domain 0, participant 0
         assert_eq!(transport.spdp_multicast_port(), 7400);
         assert_eq!(transport.metatraffic_unicast_port(), 7410);
-        assert_eq!(transport.user_unicast_port(), 7401);
+        assert_eq!(transport.user_unicast_port(), 7411);
     }
 
     #[test]
@@ -935,7 +935,7 @@ mod tests {
 
         // Verify entity ID has reader kind
         let entity_id = reader.entity_id();
-        assert_eq!(entity_id.0[3] & 0x0F, 0x07); // user reader kind
+        assert_eq!(entity_id.0[3] & 0x0F, 0x04); // user reader no-key kind
 
         p.stop();
     }

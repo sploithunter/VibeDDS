@@ -283,14 +283,14 @@ mod tests {
         let transport = UdpTransport::new(0, 0);
         assert_eq!(transport.spdp_multicast_port(), 7400);
         assert_eq!(transport.metatraffic_unicast_port(), 7410);
-        assert_eq!(transport.user_unicast_port(), 7401);
+        assert_eq!(transport.user_unicast_port(), 7411);
     }
 
     #[test]
     fn test_transport_new_participant_1() {
         let transport = UdpTransport::new(0, 1);
         assert_eq!(transport.metatraffic_unicast_port(), 7412);
-        assert_eq!(transport.user_unicast_port(), 7403);
+        assert_eq!(transport.user_unicast_port(), 7413);
     }
 
     #[test]
@@ -298,7 +298,7 @@ mod tests {
         let transport = UdpTransport::new(1, 0);
         assert_eq!(transport.spdp_multicast_port(), 7650); // 7400 + 250*1
         assert_eq!(transport.metatraffic_unicast_port(), 7660); // 7410 + 250*1
-        assert_eq!(transport.user_unicast_port(), 7651); // 7401 + 250*1
+        assert_eq!(transport.user_unicast_port(), 7661); // 7411 + 250*1
     }
 
     #[test]

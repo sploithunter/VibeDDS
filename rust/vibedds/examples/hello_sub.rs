@@ -23,7 +23,7 @@ fn main() {
     println!();
 
     // Create participant
-    let mut participant = DomainParticipant::new(0, 3); // participant_id=3 to avoid port conflicts with hello_pub(0) and RTI(0-2)
+    let mut participant = DomainParticipant::new(0, 4); // participant_id=4 to avoid port conflicts with RTI(0-2), python(3), hello_pub(5)
     participant.set_spdp_announce_interval(Duration::from_secs(5));
 
     // Start the participant
