@@ -18,7 +18,7 @@ Could an AI agent, guided by a human acting not as a DDS expert but as a regular
 
 The answer is yes. VibeDDS is a 25,595-line project across 108 files — 4,400 lines of Python library, 7,600 lines of Rust library, and the rest in tests, interop diagnostics, examples, and tooling. The Rust implementation compiles to a 1 MB static binary. It doesn't cover the full DDS spec or the full scope of Connext — but what it does implement works, and it achieves bidirectional interoperability with RTI Connext DDS 7.3.0 across all six directed paths: Python to RTI, RTI to Python, Rust to RTI, RTI to Rust, Rust to Python, and Python to Rust.
 
-The total active development time was approximately 11.5 hours across 3 working days, with 4-5 hours of human involvement. The other 7 days on the calendar? Nothing happened — zero commits, zero work. The agent wrote every line of code. The human never touched the keyboard for anything but prompts.
+File timestamps show approximately 17-18 hours of agent runtime spread across 4 active days, with 4-5 hours of human involvement. The other 6 days on the calendar? Nothing happened — zero file changes, zero work. The agent wrote every line of code. The human never touched the keyboard for anything but prompts.
 
 ## The approach: research, plan, prototype, port
 
@@ -42,7 +42,9 @@ Wednesday's CKO schedule had the research team on an excursion in San Francisco 
 
 By the time we got back from San Francisco for Karaoke Night, the agent had built the foundation. Karaoke started at 7 PM. At 7:55 PM, while somewhere in the building people were singing, the next commit landed: Stage 6e, 7,600 additional lines covering data pub/sub, the Rust participant implementation, hello_pub/hello_sub examples, RTI interop test infrastructure, and wire compatibility tests.
 
-But the agent wasn't done. File timestamps show it kept working: wire compatibility tests at 10:22 PM, the RTI interop test suite at 10:05 PM. We left it running and went to bed. By morning, VibeDDS could discover itself, exchange endpoint metadata, and publish/subscribe data between its own instances. The agent had gone from downloading spec PDFs to a working DDS implementation in about 30 hours of unsupervised runtime, while we were in San Francisco, at dinner, and at karaoke.
+But the agent wasn't done. File timestamps show it kept working: wire compatibility tests at 8:22 PM, Rust endpoint module at 8:31 PM, the RTI interop test suite at 10:05 PM. We left it running and went to bed. By morning, VibeDDS could discover itself, exchange endpoint metadata, and publish/subscribe data between its own instances.
+
+An important clarification: the agent doesn't run continuously. Each Claude Code session runs until it finishes or hits the context window limit, then stops. The file timestamps reveal distinct session clusters: about 1 hour on Tuesday afternoon, then roughly 4.5 hours on Wednesday evening. The wall clock from first PDF to working DDS was about 30 hours, but the agent's actual runtime was closer to **5-6 hours** — the rest was the laptop sitting idle while we were in San Francisco, at dinner, and at karaoke.
 
 ```
 Jan 28 16:50  Initial commit: Python + Rust libraries, specs     98,767 lines
@@ -143,16 +145,19 @@ This is where the "prototype in Python, port to Rust" strategy paid off. Two of 
 
 ## The numbers
 
-**Timeline (3 active days out of 10 calendar days):**
+**Timeline (from file timestamps, not just git commits):**
 
-| Date | Active Time | What Happened |
+File modification times reveal distinct session clusters — the agent runs until it finishes or hits the context window, then stops. Most of the wall-clock time was idle.
+
+| Date | Agent Runtime | What Happened |
 |------|-----------|---------------|
-| Jan 28 (Day 1) | ~3 hours | Zero to working DDS with self-interop |
-| Jan 29 (Day 2) | ~6 hours | RTI interop attempt: one direction works, reverse blocked |
-| Jan 30 - Feb 5 | 0 hours | No commits. Nobody worked on it. |
-| Feb 6 (Day 3) | ~2.5 hours | Full interop: Python↔RTI (1h40m) + Rust port (48m) |
+| Jan 27 (Tue) | ~1 hour | Spec conversion, Python core, Rust CDR foundations |
+| Jan 28 (Wed) | ~4.5 hours | E2E tests, full Rust scaffold, RTI interop tests |
+| Jan 29 (Thu) | ~9.5 hours | SEDP interop attempts, diagnostic tooling, stuck |
+| Jan 30 - Feb 5 | 0 hours | No file changes. Nobody worked on it. |
+| Feb 6 (Thu) | ~2.5 hours | Breakthrough + Rust port + 6-way cross-compatibility |
 
-Total active development time: **~11.5 hours.** The 7-day gap between January 29 and February 6 was not debugging time — it was simply idle. The project sat untouched until a more capable model became available.
+Estimated total agent runtime: **~17-18 hours** across 10 calendar days. The 8-day gap between January 29 and February 6 was not debugging time — the project sat untouched until a more capable model became available.
 
 **Code produced (25,595 lines across 108 files):**
 
@@ -174,7 +179,7 @@ Total active development time: **~11.5 hours.** The 7-day gap between January 29
 
 **Compiled binary:** The Rust library builds to a **1,016 KB** release binary — a complete DDS implementation with SPDP, SEDP, pub/sub, and RTI interoperability in under a megabyte.
 
-**Human involvement:** 4-5 hours of active guidance out of ~11.5 hours of total development time. The human wrote zero lines of code. Not a single line. But the human's role was critical — it just wasn't coding:
+**Human involvement:** 4-5 hours of active guidance out of ~17-18 hours of total agent runtime. The human wrote zero lines of code. Not a single line. But the human's role was critical — it just wasn't coding:
 
 - **Testing discipline.** The agent consistently wanted to skip tests and declare victory. Left to its own devices, it would sprint to "working" code that had bugs it hadn't checked for. The human's most important recurring intervention was insisting on test-early-test-often: unit tests for every module, end-to-end tests at every integration point, and interop tests before declaring anything done.
 - **Debugging direction.** The human suggested using UDP sniffers to examine raw packets. The human explained how DDS discovery actually works — the SPDP/SEDP handshake sequence, what metatraffic ports are for, why a socket bound to the wrong address would be deaf. This domain knowledge guided the agent toward productive debugging rather than flailing.
