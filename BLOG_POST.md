@@ -32,11 +32,17 @@ Before writing a single line of code, the foundation was laid:
 
 ## Days 1-2: from zero to discovery (Tuesday-Wednesday, January 27-28)
 
-On Tuesday, the research team was in working sessions at HQ from 10 AM to 6 PM. Between sessions, the project was set up: nine OMG spec PDFs converted to markdown, the initial architecture sketched out, and the agent pointed at the task. That evening was the Engineering Department Dinner at Bay Padel in Sunnyvale. The laptop was left running.
+The file timestamps tell the real story of when work happened — not just the commits, which were batched.
 
-Wednesday's CKO schedule had the research team on an excursion in San Francisco for the entire day. The laptop stayed behind at headquarters in Sunnyvale, the agent working unsupervised. By 4:50 PM, the first commit had landed: 62 files, nearly 99,000 lines (including the converted spec markdowns). The actual library code was about 3,400 lines of Python and 2,000 lines of Rust, covering CDR serialization, RTPS message building/parsing, SPDP discovery, and the beginnings of SEDP.
+On Tuesday afternoon, between CKO research sessions at HQ, the project was kicked off. At 2:36 PM, the spec PDFs were downloaded. By 2:51 PM, all nine OMG specifications had been converted to markdown. At 3:21 PM, the agent wrote its first line of Python. By 3:39 PM — eighteen minutes later — it had built out CDR serialization, message types, and test suites in both Python and Rust. The foundations of a DDS implementation in eighteen minutes.
 
-By the time we got back from San Francisco for Karaoke Night, the agent had built the foundation. Karaoke started at 7 PM. At 7:55 PM, while somewhere in the building people were singing, the next commit landed: Stage 6e, 7,600 additional lines covering data pub/sub, the Rust participant implementation, hello_pub/hello_sub examples, RTI interop test infrastructure, and wire compatibility tests. The agent had gone from zero to a DDS implementation with working self-discovery and data exchange while we were across the bay.
+That evening was the Engineering Department Dinner at Bay Padel in Sunnyvale. The laptop was left running at headquarters.
+
+Wednesday's CKO schedule had the research team on an excursion in San Francisco for the entire day. The laptop stayed behind at Sunnyvale HQ, the agent working unsupervised. The file timestamps show it was productive: SPDP tests at 5:41 PM, Rust SPDP at 7:45 PM, the full Rust library scaffolding by 8:30 PM. The first git commit at 4:50 PM was just a checkpoint of work that had been building since Tuesday afternoon — 62 files, nearly 99,000 lines (including the converted spec markdowns). The actual library code was about 3,400 lines of Python and 2,000 lines of Rust, covering CDR serialization, RTPS message building/parsing, SPDP discovery, and the beginnings of SEDP.
+
+By the time we got back from San Francisco for Karaoke Night, the agent had built the foundation. Karaoke started at 7 PM. At 7:55 PM, while somewhere in the building people were singing, the next commit landed: Stage 6e, 7,600 additional lines covering data pub/sub, the Rust participant implementation, hello_pub/hello_sub examples, RTI interop test infrastructure, and wire compatibility tests.
+
+But the agent wasn't done. File timestamps show it kept working: wire compatibility tests at 10:22 PM, the RTI interop test suite at 10:05 PM. We left it running and went to bed. By morning, VibeDDS could discover itself, exchange endpoint metadata, and publish/subscribe data between its own instances. The agent had gone from downloading spec PDFs to a working DDS implementation in about 30 hours of unsupervised runtime, while we were in San Francisco, at dinner, and at karaoke.
 
 ```
 Jan 28 16:50  Initial commit: Python + Rust libraries, specs     98,767 lines
