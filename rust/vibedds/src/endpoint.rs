@@ -206,6 +206,12 @@ impl DataReader {
     }
 
     /// Receive a sample (called by the participant when DATA arrives).
+    ///
+    /// NOTE: No deduplication is performed. If the same sample arrives via both
+    /// unicast and multicast (common when RTI or other implementations send on
+    /// multiple transports), it will be delivered and buffered twice. A production
+    /// implementation would deduplicate by (writer_guid, sequence_number). This is
+    /// intentionally left as-is to show where interop edge cases remain.
     pub fn receive(
         &mut self,
         payload: Vec<u8>,
