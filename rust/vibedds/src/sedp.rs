@@ -155,26 +155,27 @@ struct SedpInteropOptions {
 
 impl Default for SedpInteropOptions {
     fn default() -> Self {
+        // Default to "full" profile matching Python implementation for best interop
         Self {
-            profile: "minimal".to_string(),
-            include_participant_guid: false,
-            include_protocol_vendor: false,
-            include_extended_qos: false,
-            include_partition: false,
+            profile: "full".to_string(),
+            include_participant_guid: true,
+            include_protocol_vendor: true,
+            include_extended_qos: true,
+            include_partition: true,
             include_unicast_locator: true,
-            locator_pid: LocatorPid::Default,
+            locator_pid: LocatorPid::Endpoint,
             include_reliability: true,
             include_durability: true,
-            include_data_representation: false,
-            data_representation: vec![],
+            include_data_representation: true,
+            data_representation: vec![DataRepresentationId::Xcdr1],
             xtypes_format: "standard".to_string(),
             data_representation_raw: None,
             data_representation_tail: None,
-            include_type_consistency: false,
+            include_type_consistency: true,
             type_consistency_kind: TypeConsistencyKind::DisallowTypeCoercion,
             type_consistency_raw: None,
             type_consistency_mask: None,
-            include_type_information: false,
+            include_type_information: true,
             include_type_object: false,
             group_entity_id: None,
             include_rti_vendor_pids: false,
@@ -280,7 +281,21 @@ impl SedpInteropOptions {
                 opts.rti_pid_0018 = Some(vec![0xff, 0xff, 0xff, 0xff]);
                 opts.rti_pid_0060 = Some(vec![0x08, 0x01, 0x00, 0x00]);
             } else if profile_lc == "minimal" {
-                opts = Self::default();
+                opts.profile = "minimal".to_string();
+                opts.include_participant_guid = false;
+                opts.include_protocol_vendor = false;
+                opts.include_extended_qos = false;
+                opts.include_partition = false;
+                opts.include_unicast_locator = true;
+                opts.locator_pid = LocatorPid::Default;
+                opts.include_reliability = true;
+                opts.include_durability = true;
+                opts.include_data_representation = false;
+                opts.data_representation.clear();
+                opts.include_type_consistency = false;
+                opts.include_type_information = false;
+                opts.include_type_object = false;
+                opts.include_rti_vendor_pids = false;
             } else if profile_lc == "rti_strict" {
                 opts.include_participant_guid = false;
                 opts.include_protocol_vendor = true;
@@ -501,16 +516,26 @@ impl EndpointDatabase {
         self.check_matches_for_local_reader(&endpoint);
     }
 
-    pub fn add_remote_writer(&mut self, endpoint: DiscoveredEndpoint) {
+    /// Add a remote writer. Returns true if this is a new endpoint (not seen before).
+    pub fn add_remote_writer(&mut self, endpoint: DiscoveredEndpoint) -> bool {
         let key = endpoint.endpoint_guid.to_bytes();
+        let is_new = !self.remote_writers.contains_key(&key);
         self.remote_writers.insert(key, endpoint.clone());
-        self.check_matches_for_remote_writer(&endpoint);
+        if is_new {
+            self.check_matches_for_remote_writer(&endpoint);
+        }
+        is_new
     }
 
-    pub fn add_remote_reader(&mut self, endpoint: DiscoveredEndpoint) {
+    /// Add a remote reader. Returns true if this is a new endpoint (not seen before).
+    pub fn add_remote_reader(&mut self, endpoint: DiscoveredEndpoint) -> bool {
         let key = endpoint.endpoint_guid.to_bytes();
+        let is_new = !self.remote_readers.contains_key(&key);
         self.remote_readers.insert(key, endpoint.clone());
-        self.check_matches_for_remote_reader(&endpoint);
+        if is_new {
+            self.check_matches_for_remote_reader(&endpoint);
+        }
+        is_new
     }
 
     pub fn find_matching_remote_readers(&self, local_writer: &LocalEndpoint) -> Vec<&DiscoveredEndpoint> {
@@ -864,7 +889,7 @@ fn parse_endpoint_data(payload: &[u8]) -> Option<DiscoveredEndpoint> {
                     endpoint.qos.durability = kind;
                 }
             }
-            PID_DEFAULT_UNICAST_LOCATOR => {
+            PID_UNICAST_LOCATOR | PID_DEFAULT_UNICAST_LOCATOR => {
                 if value.len() >= 24 {
                     endpoint.unicast_locators.push(Locator::from_bytes(value));
                 }
@@ -971,6 +996,17 @@ impl SEDPProtocol {
         let pl_data = build_endpoint_data(endpoint, &self.interop);
         let mut payload = encapsulation_header(PL_CDR_LE).to_vec();
         payload.extend_from_slice(&pl_data);
+
+        log::info!(
+            "SEDP announce {}: topic='{}' type='{}' payload={} bytes",
+            if endpoint.is_writer { "writer" } else { "reader" },
+            endpoint.topic_name,
+            endpoint.type_name,
+            payload.len(),
+        );
+        // Hex dump the full SEDP payload for interop debugging
+        let hex: Vec<String> = payload.iter().map(|b| format!("{:02x}", b)).collect();
+        log::info!("SEDP payload hex: {}", hex.join(""));
 
         if endpoint.is_writer {
             self.pub_writer.new_change(payload);
@@ -1090,13 +1126,16 @@ impl SEDPProtocol {
         let writer_guid = Guid::new(source_prefix, sm.writer_id);
         self.pub_reader.record_received(&writer_guid, sm.writer_sn);
 
-        log::info!(
-            "Discovered remote writer: {:?} topic={} type={}",
-            endpoint.endpoint_guid,
-            endpoint.topic_name,
-            endpoint.type_name
-        );
-        endpoint_db.add_remote_writer(endpoint);
+        let is_new = endpoint_db.add_remote_writer(endpoint.clone());
+        if is_new {
+            log::info!(
+                "Discovered remote writer: {:?} topic={} type={} locators={}",
+                endpoint.endpoint_guid,
+                endpoint.topic_name,
+                endpoint.type_name,
+                endpoint.unicast_locators.len()
+            );
+        }
     }
 
     /// Handle incoming SEDP subscriptions DATA (remote DataReader info).
@@ -1119,13 +1158,16 @@ impl SEDPProtocol {
         let writer_guid = Guid::new(source_prefix, sm.writer_id);
         self.sub_reader.record_received(&writer_guid, sm.writer_sn);
 
-        log::info!(
-            "Discovered remote reader: {:?} topic={} type={}",
-            endpoint.endpoint_guid,
-            endpoint.topic_name,
-            endpoint.type_name
-        );
-        endpoint_db.add_remote_reader(endpoint);
+        let is_new = endpoint_db.add_remote_reader(endpoint.clone());
+        if is_new {
+            log::info!(
+                "Discovered remote reader: {:?} topic={} type={} locators={}",
+                endpoint.endpoint_guid,
+                endpoint.topic_name,
+                endpoint.type_name,
+                endpoint.unicast_locators.len()
+            );
+        }
     }
 
     /// Handle incoming HEARTBEAT, return ACKNACK message if needed.

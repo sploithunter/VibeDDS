@@ -74,6 +74,8 @@ class DomainParticipant:
         self._spdp_writer: SPDPWriter | None = None
         self._spdp_announce_interval = 30.0  # seconds
         self._last_spdp_announce = 0.0
+        self._sedp_heartbeat_interval = 5.0  # seconds
+        self._last_sedp_heartbeat = 0.0
         self._running = False
 
         # Callbacks
@@ -250,6 +252,11 @@ class DomainParticipant:
             ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_WRITER,
             self._sedp.handle_subscriptions_data,
         )
+        logger.debug(
+            "Registered SEDP handlers: pub_writer=%s, sub_writer=%s",
+            ENTITYID_SEDP_BUILTIN_PUBLICATIONS_WRITER.hex(),
+            ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_WRITER.hex(),
+        )
 
         # Register SPDP discovery callback to trigger SEDP
         self.on_participant_discovered(self._on_new_participant)
@@ -270,7 +277,17 @@ class DomainParticipant:
         """Send an SPDP announcement now."""
         if self._spdp_writer:
             data = self._spdp_writer.build_announcement()
+            # Send to multicast
             self._transport.send_multicast(data)
+            # Also send to unicast ports (like RTI's initial_peers)
+            # This helps with single-host testing when multicast isn't reliable
+            # Send to both localhost and external IP in case RTI binds to specific address
+            local_ip = self._transport.local_ip
+            for pid in range(5):
+                port = spdp_multicast_port(self.domain_id) + (pid * 2) + 10
+                self._transport.send_unicast(data, "127.0.0.1", port)
+                if local_ip and local_ip != "127.0.0.1":
+                    self._transport.send_unicast(data, local_ip, port)
             self._last_spdp_announce = time.time()
             logger.debug("Sent SPDP announcement")
 
@@ -285,6 +302,11 @@ class DomainParticipant:
         # Periodic SPDP announce
         if now - self._last_spdp_announce >= self._spdp_announce_interval:
             self.announce_spdp()
+
+        # Periodic SEDP heartbeat resend to ensure reliable delivery
+        if now - self._last_sedp_heartbeat >= self._sedp_heartbeat_interval:
+            self._last_sedp_heartbeat = now
+            self._resend_sedp_heartbeats()
 
         # Check for incoming packets
         sockets = self._transport.get_sockets()
@@ -330,6 +352,22 @@ class DomainParticipant:
         elif socket_name in ("user_unicast", "user_multicast"):
             self._handle_user_packet(data, addr, port)
 
+    def _resend_sedp_heartbeats(self) -> None:
+        """Resend SEDP announcements to all known participants.
+
+        Ensures the SEDP reliable protocol completes even if the initial
+        announcements were lost (e.g., due to timing).
+        """
+        for pd in self._participant_db.participants.values():
+            dest_locators = pd.metatraffic_unicast_locators
+            if not dest_locators:
+                continue
+            messages = self._sedp.build_announcement_messages(
+                pd.guid_prefix, dest_locators
+            )
+            for msg_bytes, addr, port in messages:
+                self._transport.send_unicast(msg_bytes, addr, port)
+
     def _on_new_participant(self, pd: DiscoveredParticipant) -> None:
         """Called when SPDP discovers a new participant. Triggers SEDP."""
         self._sedp.on_participant_discovered(pd)
@@ -368,8 +406,8 @@ class DomainParticipant:
         is_new = self._participant_db.update(participant)
         if is_new:
             logger.info(
-                "Discovered participant: %s from %s:%d",
-                participant.guid_prefix, addr, port,
+                "Discovered participant: %s from %s:%d (builtin_endpoints=0x%08x)",
+                participant.guid_prefix, addr, port, participant.builtin_endpoints,
             )
             logger.debug(
                 "Participant locators: meta_uc=%s meta_mc=%s user_uc=%s",
@@ -385,19 +423,41 @@ class DomainParticipant:
         """Handle metatraffic unicast packet (SEDP, etc.)."""
         try:
             msg = RtpsMessageParser.parse(data)
-        except ValueError:
+        except ValueError as e:
+            logger.debug("Metatraffic parse error from %s:%d: %s", addr, port, e)
             return
+
+        # Skip our own messages (received back via multicast)
+        if msg.header.guid_prefix == self.guid_prefix:
+            return
+
+        # Log what we're receiving on metatraffic
+        logger.debug(
+            "Metatraffic from %s:%d - guid=%s, %d submessages",
+            addr, port, msg.header.guid_prefix, len(msg.submessages)
+        )
 
         for sm in msg.submessages:
             if isinstance(sm, DataSubmessage):
                 writer_id = sm.writer_id.value
+                logger.debug(
+                    "  DATA submessage: writer=%s reader=%s, %d payload bytes",
+                    sm.writer_id, sm.reader_id, len(sm.serialized_payload or b"")
+                )
                 handlers = self._message_handlers.get(writer_id, [])
+                if not handlers:
+                    logger.debug("    No handler registered for writer %s", sm.writer_id)
                 for handler in handlers:
                     handler(sm, msg.header.guid_prefix, addr)
             elif isinstance(sm, HeartbeatSubmessage):
                 # Route heartbeats to SEDP for ACKNACK response
+                logger.debug(
+                    "  HEARTBEAT: writer=%s reader=%s, first=%d last=%d count=%d",
+                    sm.writer_id, sm.reader_id, sm.first_sn.value, sm.last_sn.value, sm.count
+                )
                 responses = self._sedp.handle_heartbeat(sm, msg.header.guid_prefix)
                 if responses:
+                    logger.debug("    Sending %d ACKNACK responses", len(responses))
                     # Find the participant to get their metatraffic address
                     pd = self._participant_db.get(msg.header.guid_prefix)
                     if pd and pd.metatraffic_unicast_locators:
@@ -428,6 +488,10 @@ class DomainParticipant:
         try:
             msg = RtpsMessageParser.parse(data)
         except ValueError:
+            return
+
+        # Skip our own messages (received back via multicast)
+        if msg.header.guid_prefix == self.guid_prefix:
             return
 
         for sm in msg.submessages:

@@ -22,7 +22,7 @@ from vibedds.qos import (
 from vibedds.reliability import ReliableWriter, ReliableReader, CacheChange
 from vibedds.sedp import (
     SEDPProtocol, EndpointDatabase, LocalEndpoint, DiscoveredEndpoint,
-    _build_endpoint_data, _parse_endpoint_data,
+    SedpInteropOptions, _build_endpoint_data, _parse_endpoint_data,
 )
 from vibedds.spdp import DiscoveredParticipant
 from vibedds.cdr import encapsulation_header, PL_CDR_LE
@@ -180,7 +180,7 @@ class TestEndpointSerialization:
             is_writer=True,
             unicast_locators=[Locator.from_ipv4("192.168.1.10", 7401)],
         )
-        pl_data = _build_endpoint_data(endpoint)
+        pl_data = _build_endpoint_data(endpoint, SedpInteropOptions())
         payload = encapsulation_header(PL_CDR_LE) + pl_data
 
         parsed = _parse_endpoint_data(payload)

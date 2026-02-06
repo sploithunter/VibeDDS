@@ -71,7 +71,7 @@ class TestEntityIdAllocator:
     def test_reader_kind(self):
         alloc = EntityIdAllocator()
         r = alloc.allocate_reader(with_key=False)
-        assert r.entity_kind == 0x07  # USER_READER_NO_KEY
+        assert r.entity_kind == 0x04  # USER_READER_NO_KEY
 
 
 # --- Topic registry tests ---

@@ -56,6 +56,8 @@ pub struct DomainParticipant {
     sedp: Option<SEDPProtocol>,
     spdp_announce_interval: Duration,
     last_spdp_announce: Instant,
+    sedp_announce_interval: Duration,
+    last_sedp_announce: Instant,
     running: bool,
     next_writer_id: u32,
     next_reader_id: u32,
@@ -89,6 +91,8 @@ impl DomainParticipant {
             sedp: None,
             spdp_announce_interval: Duration::from_secs(30),
             last_spdp_announce: Instant::now() - Duration::from_secs(60), // Force immediate announce
+            sedp_announce_interval: Duration::from_secs(1),
+            last_sedp_announce: Instant::now() - Duration::from_secs(60), // Force immediate announce
             running: false,
             next_writer_id: 1,
             next_reader_id: 1,
@@ -403,7 +407,7 @@ impl DomainParticipant {
         );
 
         if matched_readers.is_empty() {
-            // Send to user multicast (not implemented yet, use unicast to known participants)
+            // No matched readers yet - send to all participants' user data ports
             log::debug!("No matched readers, broadcasting to all participants");
             for participant in self.participant_db.iter() {
                 for locator in &participant.default_unicast_locators {
@@ -415,9 +419,24 @@ impl DomainParticipant {
                 }
             }
         } else {
-            // Send to matched readers
-            for reader_info in matched_readers {
-                for locator in &reader_info.unicast_locators {
+            // Send to matched readers' endpoint locators
+            for reader_info in &matched_readers {
+                let locators = if reader_info.unicast_locators.is_empty() {
+                    // Fall back to participant's default unicast locators
+                    if let Some(pd) = self.participant_db.get(&reader_info.endpoint_guid.prefix) {
+                        log::debug!(
+                            "Using participant default locators for reader {:?}",
+                            reader_info.endpoint_guid
+                        );
+                        pd.default_unicast_locators.as_slice()
+                    } else {
+                        &[]
+                    }
+                } else {
+                    reader_info.unicast_locators.as_slice()
+                };
+
+                for locator in locators {
                     if let Some(addr_str) = locator.ipv4_str() {
                         if let Ok(ip) = addr_str.parse::<Ipv4Addr>() {
                             self.transport.send_unicast(&msg, ip, locator.port as u16)?;
@@ -427,14 +446,25 @@ impl DomainParticipant {
             }
         }
 
+        // Also send on user multicast for listeners like rtiddsspy
+        self.transport.send_user_multicast(&msg)?;
+
         Ok(())
     }
 
     /// Send SEDP announcements to all discovered participants.
+    /// Throttled to avoid flooding - only sends at sedp_announce_interval.
     pub fn announce_sedp(&mut self) -> io::Result<()> {
         if self.sedp.is_none() {
             return Ok(());
         }
+
+        // Throttle SEDP announcements
+        let now = Instant::now();
+        if now.duration_since(self.last_sedp_announce) < self.sedp_announce_interval {
+            return Ok(());
+        }
+        self.last_sedp_announce = now;
 
         // Collect participant info first to avoid borrow issues
         let participants: Vec<_> = self
@@ -485,6 +515,12 @@ impl DomainParticipant {
 
             // Check user unicast
             if let Some(pkt) = self.transport.try_recv_user()? {
+                self.handle_user_packet(&pkt.data)?;
+                received_any = true;
+            }
+
+            // Check user multicast
+            if let Some(pkt) = self.transport.try_recv_user_multicast()? {
                 self.handle_user_packet(&pkt.data)?;
                 received_any = true;
             }
@@ -873,9 +909,9 @@ mod tests {
         assert_eq!(writer.type_name, "TestType");
         assert!(!writer.is_reliable());
 
-        // Verify entity ID has writer kind
+        // Verify entity ID has writer kind (0x03 = no-key writer, 0x02 = keyed writer)
         let entity_id = writer.entity_id();
-        assert_eq!(entity_id.0[3] & 0x0F, 0x02); // user writer kind
+        assert_eq!(entity_id.0[3], ENTITY_KIND_USER_WRITER_NO_KEY);
 
         p.stop();
     }

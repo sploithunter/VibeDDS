@@ -8,7 +8,7 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 
 use socket2::{Domain, Protocol, Socket, Type};
 
-use crate::constants::{spdp_multicast_port, spdp_unicast_port, user_unicast_port, SPDP_MULTICAST_ADDRESS};
+use crate::constants::{spdp_multicast_port, spdp_unicast_port, user_multicast_port, user_unicast_port, SPDP_MULTICAST_ADDRESS};
 
 /// A UDP packet received from the network.
 #[derive(Debug)]
@@ -24,6 +24,7 @@ pub enum SocketType {
     SpdpMulticast,
     MetatrafficUnicast,
     UserUnicast,
+    UserMulticast,
 }
 
 /// Manages UDP sockets for RTPS communication.
@@ -34,9 +35,11 @@ pub struct UdpTransport {
     spdp_mc_port: u16,
     meta_uc_port: u16,
     user_uc_port: u16,
+    user_mc_port: u16,
     spdp_mc_sock: Option<UdpSocket>,
     meta_uc_sock: Option<UdpSocket>,
     user_uc_sock: Option<UdpSocket>,
+    user_mc_sock: Option<UdpSocket>,
     send_sock: Option<UdpSocket>,
 }
 
@@ -49,9 +52,11 @@ impl UdpTransport {
             spdp_mc_port: spdp_multicast_port(domain_id),
             meta_uc_port: spdp_unicast_port(domain_id, participant_id),
             user_uc_port: user_unicast_port(domain_id, participant_id),
+            user_mc_port: user_multicast_port(domain_id),
             spdp_mc_sock: None,
             meta_uc_sock: None,
             user_uc_sock: None,
+            user_mc_sock: None,
             send_sock: None,
         }
     }
@@ -76,14 +81,16 @@ impl UdpTransport {
         self.spdp_mc_sock = Some(self.open_spdp_multicast()?);
         self.meta_uc_sock = Some(self.open_unicast(self.meta_uc_port)?);
         self.user_uc_sock = Some(self.open_unicast(self.user_uc_port)?);
+        self.user_mc_sock = Some(self.open_user_multicast()?);
         self.send_sock = Some(self.open_send_socket()?);
 
         log::info!(
-            "Transport opened: local_ip={}, spdp_mc={}, meta_uc={}, user_uc={}",
+            "Transport opened: local_ip={}, spdp_mc={}, meta_uc={}, user_uc={}, user_mc={}",
             self.local_ip,
             self.spdp_mc_port,
             self.meta_uc_port,
-            self.user_uc_port
+            self.user_uc_port,
+            self.user_mc_port
         );
         Ok(())
     }
@@ -98,6 +105,23 @@ impl UdpTransport {
         socket.bind(&addr.into())?;
 
         // Join multicast group
+        let mcast_addr: Ipv4Addr = SPDP_MULTICAST_ADDRESS.parse().unwrap();
+        socket.join_multicast_v4(&mcast_addr, &Ipv4Addr::UNSPECIFIED)?;
+        socket.set_nonblocking(true)?;
+
+        Ok(socket.into())
+    }
+
+    fn open_user_multicast(&self) -> io::Result<UdpSocket> {
+        let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+        socket.set_reuse_address(true)?;
+        #[cfg(target_os = "macos")]
+        socket.set_reuse_port(true)?;
+
+        let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, self.user_mc_port);
+        socket.bind(&addr.into())?;
+
+        // Join multicast group for user data
         let mcast_addr: Ipv4Addr = SPDP_MULTICAST_ADDRESS.parse().unwrap();
         socket.join_multicast_v4(&mcast_addr, &Ipv4Addr::UNSPECIFIED)?;
         socket.set_nonblocking(true)?;
@@ -131,6 +155,7 @@ impl UdpTransport {
         self.spdp_mc_sock = None;
         self.meta_uc_sock = None;
         self.user_uc_sock = None;
+        self.user_mc_sock = None;
         self.send_sock = None;
     }
 
@@ -139,6 +164,17 @@ impl UdpTransport {
         if let Some(sock) = &self.send_sock {
             let mcast_addr: Ipv4Addr = SPDP_MULTICAST_ADDRESS.parse().unwrap();
             let dest = SocketAddrV4::new(mcast_addr, self.spdp_mc_port);
+            sock.send_to(data, dest)?;
+        }
+        Ok(())
+    }
+
+    /// Send user data to the default user multicast group.
+    /// This allows tools like rtiddsspy to receive data on multicast.
+    pub fn send_user_multicast(&self, data: &[u8]) -> io::Result<()> {
+        if let Some(sock) = &self.send_sock {
+            let mcast_addr: Ipv4Addr = SPDP_MULTICAST_ADDRESS.parse().unwrap();
+            let dest = SocketAddrV4::new(mcast_addr, user_multicast_port(self.domain_id));
             sock.send_to(data, dest)?;
         }
         Ok(())
@@ -166,6 +202,11 @@ impl UdpTransport {
     /// Try to receive a packet from the user unicast socket.
     pub fn try_recv_user(&self) -> io::Result<Option<ReceivedPacket>> {
         self.try_recv(&self.user_uc_sock, SocketType::UserUnicast)
+    }
+
+    /// Try to receive a packet from the user multicast socket.
+    pub fn try_recv_user_multicast(&self) -> io::Result<Option<ReceivedPacket>> {
+        self.try_recv(&self.user_mc_sock, SocketType::UserMulticast)
     }
 
     fn try_recv(
@@ -202,6 +243,9 @@ impl UdpTransport {
             fds.push(s.as_raw_fd());
         }
         if let Some(s) = &self.user_uc_sock {
+            fds.push(s.as_raw_fd());
+        }
+        if let Some(s) = &self.user_mc_sock {
             fds.push(s.as_raw_fd());
         }
         fds
@@ -348,8 +392,8 @@ mod tests {
         transport.open().unwrap();
 
         let fds = transport.get_fds();
-        // Should have 3 file descriptors (spdp_mc, meta_uc, user_uc)
-        assert_eq!(fds.len(), 3);
+        // Should have 4 file descriptors (spdp_mc, meta_uc, user_uc, user_mc)
+        assert_eq!(fds.len(), 4);
 
         transport.close();
     }

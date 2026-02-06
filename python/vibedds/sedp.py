@@ -596,6 +596,10 @@ def _build_endpoint_data(
     # to send user data. This is important for data delivery.
     if interop.include_unicast_locator:
         for loc in endpoint.unicast_locators:
+            logger.debug(
+                "SEDP locator: ip=%s port=%d, bytes=%s",
+                loc.ipv4_str, loc.port, loc.to_bytes().hex()
+            )
             if interop.locator_pid in ("endpoint", "both"):
                 pl.add_parameter(PID_UNICAST_LOCATOR, loc.to_bytes())
             if interop.locator_pid in ("default", "both"):
@@ -726,6 +730,15 @@ class SEDPProtocol:
         """Queue a local endpoint for SEDP announcement."""
         pl_data = _build_endpoint_data(endpoint, self._interop)
         payload = encapsulation_header(PL_CDR_LE) + pl_data
+
+        logger.debug(
+            "SEDP announce %s: topic='%s' type='%s' payload=%d bytes: %s...",
+            "writer" if endpoint.is_writer else "reader",
+            endpoint.topic_name,
+            endpoint.type_name,
+            len(payload),
+            payload[:100].hex(),
+        )
 
         if endpoint.is_writer:
             change = self._pub_writer.new_change(payload)

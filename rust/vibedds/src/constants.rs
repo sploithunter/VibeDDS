@@ -1,6 +1,7 @@
 /// RTPS protocol constants: magic, IDs, PIDs, ports, entity IDs.
 
 pub const RTPS_MAGIC: [u8; 4] = *b"RTPS";
+pub const RTPX_MAGIC: [u8; 4] = *b"RTPX";
 pub const RTPS_VERSION_MAJOR: u8 = 2;
 pub const RTPS_VERSION_MINOR: u8 = 5;
 pub const VENDOR_ID: [u8; 2] = [0xFF, 0x01];
@@ -34,8 +35,8 @@ pub const ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_READER: [u8; 4] = [0x00, 0x00, 0x0
 // User entity kinds
 pub const ENTITY_KIND_USER_WRITER_WITH_KEY: u8 = 0x02;
 pub const ENTITY_KIND_USER_WRITER_NO_KEY: u8 = 0x03;
-pub const ENTITY_KIND_USER_READER_WITH_KEY: u8 = 0x04;
-pub const ENTITY_KIND_USER_READER_NO_KEY: u8 = 0x07;
+pub const ENTITY_KIND_USER_READER_NO_KEY: u8 = 0x04;
+pub const ENTITY_KIND_USER_READER_WITH_KEY: u8 = 0x07;
 
 // Parameter IDs (PIDs)
 pub const PID_PAD: u16 = 0x0000;
@@ -113,6 +114,10 @@ pub fn spdp_multicast_port(domain_id: u16) -> u16 {
 
 pub fn spdp_unicast_port(domain_id: u16, participant_id: u16) -> u16 {
     PB + DG * domain_id + D1 + PG * participant_id
+}
+
+pub fn user_multicast_port(domain_id: u16) -> u16 {
+    PB + DG * domain_id + D2
 }
 
 pub fn user_unicast_port(domain_id: u16, participant_id: u16) -> u16 {

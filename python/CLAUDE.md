@@ -28,20 +28,22 @@ This is important for testing - if the writer hasn't matched any readers, callin
 - VibeDDS writer can send data to RTI reader ✓
 - Verified with rtiddsspy reading HelloWorld topic
 
-### RTI → VibeDDS (IN PROGRESS)
-Investigation status:
-- SPDP discovery works bidirectionally ✓
-- VibeDDS receives RTI's SEDP publications (discovers remote writer) ✓
-- RTI receives and ACKs VibeDDS's SEDP subscription ✓
-- Topic/type names match exactly ✓
-- QoS is compatible (both BEST_EFFORT/VOLATILE) ✓
-- RTI reports no incompatible QoS ✓
-- BUT: RTI writer shows 0 matched subscriptions
+### RTI → VibeDDS (WORKING)
+- RTI writer sends data to VibeDDS reader ✓
+- Verified with rti_test/test_rti_to_vibedds.py (12 samples received)
+- RTI BEST_EFFORT writer matches VibeDDS BEST_EFFORT reader ✓
+- RTI matched_subscriptions reports 1 matched subscription ✓
 
-Possible causes still being investigated:
-1. TYPE_OBJECT (PID 0x8021) may be required for XTypes type checking
-2. RTI vendor-specific PIDs (0x8000, 0x800f, 0x8010, etc.)
-3. DATA_REPRESENTATION / TYPE_CONSISTENCY / TYPE_INFORMATION mismatches
+### Bugs Fixed for RTI Interop
+1. **Transport binding** (transport.py): Metatraffic socket was bound to specific IP
+   instead of INADDR_ANY. RTI sends same-host metatraffic via 127.0.0.1, which
+   couldn't reach a socket bound to 192.168.1.12. Fixed by binding to "".
+2. **Entity kind constants swapped** (constants.py): ENTITY_KIND_USER_READER_NO_KEY
+   was 0x07 (which is actually WITH_KEY per RTPS spec 9.3.1.2) and vice versa.
+   RTI rejected VibeDDS's reader because entity kind didn't match expectations.
+3. **Reliability wire values** (qos.py): ReliabilityKind used 0/1 (DDS API values)
+   instead of 1/2 (RTPS wire values per spec 9.4.2.13). RTI couldn't parse the
+   reliability QoS back from matched subscription data.
 
 ### SEDP Subscription PIDs Included
 VibeDDS includes these PIDs in SEDP subscription announcements:

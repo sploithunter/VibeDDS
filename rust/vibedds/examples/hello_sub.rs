@@ -23,7 +23,7 @@ fn main() {
     println!();
 
     // Create participant
-    let mut participant = DomainParticipant::new(0, 1); // participant_id=1 to avoid port conflicts
+    let mut participant = DomainParticipant::new(0, 3); // participant_id=3 to avoid port conflicts with hello_pub(0) and RTI(0-2)
     participant.set_spdp_announce_interval(Duration::from_secs(5));
 
     // Start the participant
@@ -33,8 +33,8 @@ fn main() {
     // Send initial SPDP announcement
     participant.announce_spdp().expect("Failed to announce SPDP");
 
-    // Create a HelloWorld DataReader
-    let reader_qos = QosPolicy::reliable();
+    // Create a HelloWorld DataReader (best-effort for simpler interop debugging)
+    let reader_qos = QosPolicy::best_effort();
     let reader_arc = participant.create_reader(
         "HelloWorld",
         "HelloWorld",

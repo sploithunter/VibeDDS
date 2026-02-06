@@ -110,12 +110,27 @@ class UdpTransport:
         self._spdp_mc_sock = sock
 
     def _open_metatraffic_unicast(self) -> None:
-        """Open metatraffic unicast receive socket."""
+        """Open metatraffic unicast socket for both sending and receiving.
+
+        Binds to INADDR_ANY so we can receive from both localhost (127.0.0.1)
+        and external IP. Same-host DDS implementations like RTI send metatraffic
+        via localhost when running on the same machine.
+
+        Uses IP_MULTICAST_IF to ensure multicast sends originate from the
+        correct external IP address.
+        """
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         if sys.platform == "darwin":
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        # Bind to all interfaces so we receive from both localhost and external
         sock.bind(("", self._metatraffic_unicast_port))
+        # Configure for multicast sending from the correct interface
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+        if self.local_ip:
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
+                          socket.inet_aton(self.local_ip))
         sock.setblocking(False)
         self._meta_uc_sock = sock
 
@@ -171,16 +186,24 @@ class UdpTransport:
         self._send_sock = None
 
     def send_multicast(self, data: bytes, port: int | None = None) -> None:
-        """Send data to the SPDP multicast group."""
+        """Send data to the SPDP multicast group.
+
+        Uses the metatraffic unicast socket for sending so packets come from
+        the correct source port (required by RTI for interop).
+        """
         if port is None:
             port = self._spdp_multicast_port
-        if self._send_sock:
-            self._send_sock.sendto(data, (SPDP_MULTICAST_ADDRESS, port))
+        if self._meta_uc_sock:
+            self._meta_uc_sock.sendto(data, (SPDP_MULTICAST_ADDRESS, port))
 
     def send_unicast(self, data: bytes, addr: str, port: int) -> None:
-        """Send data to a specific unicast address:port."""
-        if self._send_sock:
-            self._send_sock.sendto(data, (addr, port))
+        """Send data to a specific unicast address:port.
+
+        Uses the metatraffic unicast socket for sending so packets come from
+        the correct source port (required by RTI for interop).
+        """
+        if self._meta_uc_sock:
+            self._meta_uc_sock.sendto(data, (addr, port))
 
     def get_sockets(self) -> dict[str, socket.socket]:
         """Return dict of name -> socket for select() usage."""

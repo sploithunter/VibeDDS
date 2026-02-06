@@ -8,12 +8,17 @@ from __future__ import annotations
 import struct
 from typing import TYPE_CHECKING
 
+import logging
+
 from vibedds.constants import (
-    RTPS_MAGIC, RTPS_VERSION_MAJOR, RTPS_VERSION_MINOR, VENDOR_ID,
+    RTPS_MAGIC, RTPX_MAGIC, RTPS_VERSION_MAJOR, RTPS_VERSION_MINOR, VENDOR_ID,
     SUBMSG_PAD, SUBMSG_ACKNACK, SUBMSG_HEARTBEAT, SUBMSG_GAP,
     SUBMSG_INFO_TS, SUBMSG_INFO_SRC, SUBMSG_INFO_DST, SUBMSG_DATA,
+    SUBMSG_DATA_FRAG, SUBMSG_NACK_FRAG, SUBMSG_HEARTBEAT_FRAG,
     FLAG_ENDIAN, FLAG_DATA_Q, FLAG_DATA_D, FLAG_DATA_K,
 )
+
+logger = logging.getLogger(__name__)
 from vibedds.types import (
     GuidPrefix, EntityId, SequenceNumber, SequenceNumberSet,
     Timestamp, ProtocolVersion, VendorId,
@@ -199,8 +204,8 @@ class RtpsMessageParser:
         if len(data) < 20:
             raise ValueError(f"RTPS message too short: {len(data)} bytes (need >= 20)")
 
-        # Validate magic
-        if data[0:4] != RTPS_MAGIC:
+        # Validate magic (accept both RTPS and RTPX - RTI's extended protocol)
+        if data[0:4] not in (RTPS_MAGIC, RTPX_MAGIC):
             raise ValueError(f"Invalid RTPS magic: {data[0:4]!r}")
 
         # Parse header
@@ -239,6 +244,16 @@ class RtpsMessageParser:
 
         return RtpsMessage(header=header, submessages=submessages)
 
+    # Map submessage IDs to names for logging
+    _SUBMSG_NAMES = {
+        SUBMSG_PAD: "PAD", SUBMSG_ACKNACK: "ACKNACK", SUBMSG_HEARTBEAT: "HEARTBEAT",
+        SUBMSG_GAP: "GAP", SUBMSG_INFO_TS: "INFO_TS", SUBMSG_INFO_SRC: "INFO_SRC",
+        SUBMSG_INFO_DST: "INFO_DST", SUBMSG_DATA: "DATA",
+        SUBMSG_DATA_FRAG: "DATA_FRAG", SUBMSG_NACK_FRAG: "NACK_FRAG",
+        SUBMSG_HEARTBEAT_FRAG: "HEARTBEAT_FRAG",
+        0x0F: "INFO_REPLY",
+    }
+
     @staticmethod
     def _parse_submessage(
         submsg_id: int, flags: int, endian: str, body: bytes
@@ -262,10 +277,18 @@ class RtpsMessageParser:
             elif submsg_id == SUBMSG_PAD:
                 return PadSubmessage(flags=flags)
             else:
-                # Unknown submessage — skip
+                name = RtpsMessageParser._SUBMSG_NAMES.get(submsg_id, f"0x{submsg_id:02x}")
+                logger.debug(
+                    "Skipping unknown submessage: id=%s flags=0x%02x body=%d bytes",
+                    name, flags, len(body),
+                )
                 return None
-        except Exception:
-            # Malformed submessage — skip rather than crash
+        except Exception as e:
+            name = RtpsMessageParser._SUBMSG_NAMES.get(submsg_id, f"0x{submsg_id:02x}")
+            logger.warning(
+                "Failed to parse submessage id=%s flags=0x%02x body=%d bytes: %s (hex: %s)",
+                name, flags, len(body), e, body[:40].hex() if body else "empty",
+            )
             return None
 
     @staticmethod

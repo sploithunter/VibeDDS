@@ -11,6 +11,8 @@ from vibedds.types import Duration
 
 
 class ReliabilityKind(IntEnum):
+    # RTPS wire format values (Section 9.4.2.13, Table 9.16)
+    # Note: different from DDS API enum (0/1) — RTPS uses 1/2
     BEST_EFFORT = 1
     RELIABLE = 2
 

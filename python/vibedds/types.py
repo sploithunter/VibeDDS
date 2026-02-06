@@ -291,10 +291,12 @@ class Locator:
         )
 
     def to_bytes(self) -> bytes:
+        """Serialize locator to bytes using little-endian (CDR LE)."""
         return struct.pack("<iI", self.kind, self.port) + self.address
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Locator:
+        """Deserialize locator from bytes. Uses little-endian (CDR LE)."""
         kind, port = struct.unpack("<iI", data[:8])
         return cls(kind=kind, port=port, address=bytes(data[8:24]))
 

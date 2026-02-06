@@ -181,7 +181,7 @@ pub fn parse_rtps_message(data: &[u8]) -> io::Result<RtpsMessage> {
             format!("RTPS message too short: {} bytes", data.len()),
         ));
     }
-    if &data[0..4] != &RTPS_MAGIC {
+    if &data[0..4] != &RTPS_MAGIC && &data[0..4] != &RTPX_MAGIC {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "Invalid RTPS magic",

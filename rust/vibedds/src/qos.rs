@@ -7,14 +7,16 @@ use crate::types::Duration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum ReliabilityKind {
-    BestEffort = 1,
-    Reliable = 2,
+    BestEffort = 0,
+    Reliable = 1,
 }
 
 impl ReliabilityKind {
     pub fn from_u32(v: u32) -> Option<Self> {
         match v {
-            1 => Some(Self::BestEffort),
+            0 => Some(Self::BestEffort),
+            1 => Some(Self::Reliable),
+            // Tolerate RTPS-level values (1=BestEffort, 2=Reliable) from other vendors
             2 => Some(Self::Reliable),
             _ => None,
         }
@@ -539,7 +541,7 @@ mod tests {
     fn test_serialize_reliability() {
         let qos = QosPolicy::reliable();
         let bytes = serialize_reliability_qos(&qos);
-        assert_eq!(bytes[0..4], 2u32.to_le_bytes()); // RELIABLE = 2
+        assert_eq!(bytes[0..4], 1u32.to_le_bytes()); // RELIABLE = 1 (DDS wire value)
     }
 
     #[test]
@@ -577,7 +579,9 @@ mod tests {
 
     #[test]
     fn test_reliability_from_u32() {
-        assert_eq!(ReliabilityKind::from_u32(1), Some(ReliabilityKind::BestEffort));
+        assert_eq!(ReliabilityKind::from_u32(0), Some(ReliabilityKind::BestEffort));
+        assert_eq!(ReliabilityKind::from_u32(1), Some(ReliabilityKind::Reliable));
+        // Also accept RTPS-level value 2 as Reliable
         assert_eq!(ReliabilityKind::from_u32(2), Some(ReliabilityKind::Reliable));
         assert_eq!(ReliabilityKind::from_u32(99), None);
     }

@@ -1,0 +1,7 @@
+// Simple IDL for interop testing
+struct SimpleType {
+    string<64> message;  //@key
+    long x;
+    long y;
+    long count;
+};
