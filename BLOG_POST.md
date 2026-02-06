@@ -1,6 +1,6 @@
 # Vibe Coding a DDS Implementation: Semi-Automated Development of Complex Systems Software
 
-*How an AI agent built a working DDS middleware in Python and Rust — and achieved full interoperability with RTI Connext DDS in under 10 days of wall-clock time.*
+*How an AI agent built a working DDS middleware in Python and Rust — and achieved full interoperability with RTI Connext DDS across 3 active days of work.*
 
 ## How it started
 
@@ -18,7 +18,7 @@ Could an AI agent, guided by a human who understands the domain but doesn't writ
 
 The answer is yes. VibeDDS is a 25,595-line project across 108 files — 4,400 lines of Python library, 7,600 lines of Rust library, and the rest in tests, interop diagnostics, examples, and tooling. The Rust implementation compiles to a 1 MB static binary. It achieves full bidirectional interoperability with RTI Connext DDS 7.3.0 across all six directed paths: Python to RTI, RTI to Python, Rust to RTI, RTI to Rust, Rust to Python, and Python to Rust.
 
-The total human effort was approximately 4-5 hours of active involvement spread across 10 calendar days. The agent wrote essentially all of the code.
+The total active development time was approximately 11.5 hours across 3 working days, with 4-5 hours of human involvement. The other 7 days on the calendar? Nothing happened — zero commits, zero work. The agent wrote essentially all of the code.
 
 ## The approach: research, plan, prototype, port
 
@@ -63,7 +63,7 @@ This is where we got stuck.
 
 ## The gap: January 29 to February 5
 
-For a full week, the problem remained unsolved. Both Claude (Opus 4.5) and GPT-5.2 (via Codex) were pointed at the problem. The agent sessions during this period (run primarily during RTI's Company Kickoff event, with the human in and out of sessions between events) explored increasingly exotic hypotheses:
+The git log tells the real story: zero commits for an entire week. The project was stuck, and rather than throw more hours at it, it simply sat idle. Both Claude (Opus 4.5) and GPT-5.2 (via Codex) had been pointed at the problem during CKO. The agent sessions explored increasingly exotic hypotheses:
 
 - Maybe RTI required specific vendor PIDs (proprietary parameter IDs that RTI includes in its own traffic)?
 - Maybe the TypeObject blob needed to be zlib-compressed in a specific way?
@@ -131,15 +131,16 @@ This is where the "prototype in Python, port to Rust" strategy paid off. Two of 
 
 ## The numbers
 
-**Timeline:**
+**Timeline (3 active days out of 10 calendar days):**
 
-| Date | Wall Clock | What Happened |
+| Date | Active Time | What Happened |
 |------|-----------|---------------|
-| Jan 28 | ~3 hours | Zero to working DDS with self-interop |
-| Jan 29 | ~6 hours | RTI interop attempt: one direction works, reverse blocked |
-| Jan 29 - Feb 5 | ~5 hours (intermittent) | Multiple agent sessions, all stuck |
-| Feb 6 AM | 1h 40m | Python↔RTI interop fully working |
-| Feb 6 AM | 48m | Rust port + 6-way cross-compatibility |
+| Jan 28 (Day 1) | ~3 hours | Zero to working DDS with self-interop |
+| Jan 29 (Day 2) | ~6 hours | RTI interop attempt: one direction works, reverse blocked |
+| Jan 30 - Feb 5 | 0 hours | No commits. Nobody worked on it. |
+| Feb 6 (Day 3) | ~2.5 hours | Full interop: Python↔RTI (1h40m) + Rust port (48m) |
+
+Total active development time: **~11.5 hours.** The 7-day gap between January 29 and February 6 was not debugging time — it was simply idle. The project sat untouched until a more capable model became available.
 
 **Code produced (25,595 lines across 108 files):**
 
@@ -161,7 +162,7 @@ This is where the "prototype in Python, port to Rust" strategy paid off. Two of 
 
 **Compiled binary:** The Rust library builds to a **1,016 KB** release binary — a complete DDS implementation with SPDP, SEDP, pub/sub, and RTI interoperability in under a megabyte.
 
-**Human involvement estimate:** 4-5 hours of active guidance (architecture decisions, debugging direction, "have you checked the transport layer?") out of roughly 15 hours of total agent runtime. The human wrote zero lines of code. The human's role was architect, domain expert, and occasionally the voice saying "you're looking in the wrong place."
+**Human involvement estimate:** 4-5 hours of active guidance out of ~11.5 hours of total development time. The human wrote zero lines of code. The human's role was architect, domain expert, and occasionally the voice saying "you're looking in the wrong place."
 
 **Specifications consumed:** 9 OMG spec PDFs (19 MB total), converted to 76,000 lines of markdown, referenced continuously by the agent during implementation.
 
