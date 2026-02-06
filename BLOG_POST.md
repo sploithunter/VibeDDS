@@ -1,24 +1,24 @@
 # Vibe Coding a DDS Implementation: Semi-Automated Development of Complex Systems Software
 
-*How an AI agent built a working DDS middleware in Python and Rust — and achieved full interoperability with RTI Connext DDS across 3 active days of work.*
+*How an AI agent built a working DDS middleware in Python and Rust — and achieved basic interoperability with RTI Connext DDS across 3 active days of work.*
 
 ## How it started
 
-This story begins at RTI's Company Kickoff (CKO) in the last week of January 2026. The research team was together, and conversations kept circling back to the same theme: automated software development is becoming shockingly capable, but it's hard to convince people — even technical people — of just how far it's come. Anthropic had recently published [a case study](https://www.anthropic.com/engineering/building-c-compiler) about building a C compiler using "parallel Claudes" — nearly 2,000 Claude Code sessions producing a 100,000-line compiler. Impressive, but compilers are a well-understood domain with clear test oracles. What about something messier? Something with wire protocols, interoperability requirements, and a real-world implementation to validate against?
+This story begins at RTI's Company Kickoff (CKO) in the last week of January 2026. The research team was together, and conversations kept coming back to the same question: how do we show people how powerful automated software development has become? We'd all seen the demos. Cursor had just shipped a three-million-line browser that "kinda worked." The capabilities were advancing faster than anyone's intuition about what was possible, and even technical audiences were skeptical.
 
 Someone floated a thought experiment: what if you tried to vibe code a DDS implementation?
 
-We chose DDS deliberately. Everyone at RTI — not just the development team — understands the complexity of the DDS protocol and the difficulty of getting an implementation right. Sales engineers have debugged interop issues. Product managers have watched multi-month integration efforts. Field engineers know what it means when `rtiddsspy` shows zero matched subscriptions. If an AI agent could build a working DDS implementation, it would resonate with this audience in a way that a compiler or a web framework wouldn't. Everyone here knows exactly how hard this is supposed to be.
+We chose DDS deliberately. Everyone at RTI — not just the development team — understands the complexity of DDS and the difficulty of getting an implementation right. Sales engineers have debugged interop issues. Product managers have watched multi-month integration efforts. Field engineers know what it means when `rtiddsspy` shows zero matched subscriptions. If an AI agent could build a working DDS implementation, it would land differently than a compiler or a web framework. Everyone here knows exactly how hard this is supposed to be.
 
-DDS is a publish-subscribe middleware standard governed by the OMG, used in defense, autonomous vehicles, robotics, and industrial IoT. RTI Connext DDS — our own product — represents decades of engineering. The RTPS wire protocol specification alone runs to 282 pages. Getting a from-scratch implementation to interoperate with RTI Connext is not a matter of passing a test suite you wrote yourself — RTI's implementation is the ground truth, and it will reject your packets for reasons buried in spec sections you haven't read yet.
+The RTPS wire protocol specification alone runs to 282 pages. Connext represents decades of engineering. Getting a from-scratch implementation to interoperate with Connext is not a matter of passing a test suite you wrote yourself — Connext is the ground truth, and it will reject your packets for reasons buried in spec sections you haven't read yet.
 
-The thought experiment turned into an actual experiment. Between CKO sessions, on hotel Wi-Fi, VibeDDS was born.
+The thought experiment turned into an actual experiment. At RTI headquarters, with a laptop left running overnight between CKO sessions, VibeDDS was born.
 
-Could an AI agent, guided by a human who understands the domain but doesn't write the code, build a working DDS implementation and achieve interoperability with RTI Connext?
+Could an AI agent, guided by a human acting not as a DDS expert but as a regular programmer — pointing at docs, insisting on tests, suggesting debugging techniques — build a working DDS implementation and achieve interoperability with Connext?
 
-The answer is yes. VibeDDS is a 25,595-line project across 108 files — 4,400 lines of Python library, 7,600 lines of Rust library, and the rest in tests, interop diagnostics, examples, and tooling. The Rust implementation compiles to a 1 MB static binary. It achieves full bidirectional interoperability with RTI Connext DDS 7.3.0 across all six directed paths: Python to RTI, RTI to Python, Rust to RTI, RTI to Rust, Rust to Python, and Python to Rust.
+The answer is yes. VibeDDS is a 25,595-line project across 108 files — 4,400 lines of Python library, 7,600 lines of Rust library, and the rest in tests, interop diagnostics, examples, and tooling. The Rust implementation compiles to a 1 MB static binary. It doesn't cover the full DDS spec or the full scope of Connext — but what it does implement works, and it achieves bidirectional interoperability with RTI Connext DDS 7.3.0 across all six directed paths: Python to RTI, RTI to Python, Rust to RTI, RTI to Rust, Rust to Python, and Python to Rust.
 
-The total active development time was approximately 11.5 hours across 3 working days, with 4-5 hours of human involvement. The other 7 days on the calendar? Nothing happened — zero commits, zero work. The agent wrote essentially all of the code.
+The total active development time was approximately 11.5 hours across 3 working days, with 4-5 hours of human involvement. The other 7 days on the calendar? Nothing happened — zero commits, zero work. The agent wrote every line of code. The human never touched the keyboard for anything but prompts.
 
 ## The approach: research, plan, prototype, port
 
@@ -26,9 +26,9 @@ Before writing a single line of code, the foundation was laid:
 
 **Research phase.** Nine OMG specification PDFs (DDS 1.4, DDSI-RTPS 2.5, DDS-XTypes 1.3, and six others) were converted to markdown and fed into the agent's context. This created approximately 76,000 lines of searchable specification text that the agent could reference during implementation. The agent wasn't working from blog posts or tutorials — it had the actual standards.
 
-**Architecture decision.** One key human insight shaped the entire project: *prototype in Python first, then port to Rust.* AI models generate Python more fluently than Rust, and debugging protocol issues is dramatically faster without a compile step. The plan was to get Python fully correct through interop testing with RTI, then mechanically port the validated logic to Rust. This turned out to be the single most important decision of the project.
+**Architecture decision.** One key insight shaped the entire project: *prototype in Python first, then port to Rust.* AI models generate Python more fluently than Rust, and debugging protocol issues is dramatically faster without a compile step. The plan was to get Python working through interop testing with Connext, then mechanically port the validated logic to Rust. This turned out to be the single most important decision of the project.
 
-**CLAUDE.md as the constitution.** A `CLAUDE.md` file established the agent's operating instructions: test early and often, write unit tests for every module, write end-to-end tests for every integration point, and build incrementally through defined stages (CDR serialization, then RTPS messages, then SPDP discovery, then SEDP endpoint discovery, then pub/sub data exchange). This file persisted across sessions and acted as the agent's memory of project conventions.
+**CLAUDE.md as the constitution.** A `CLAUDE.md` file established the agent's operating instructions: test early and often, write unit tests for every module, write end-to-end tests for every integration point, and build incrementally through defined stages (CDR serialization, then RTPS messages, then SPDP discovery, then SEDP endpoint discovery, then pub/sub data exchange). This file persisted across sessions and acted as the agent's memory of project conventions. This mattered because the agent's natural tendency is to sprint toward the goal and declare victory — the `CLAUDE.md` was the guardrail that forced discipline.
 
 ## Day 1: from zero to discovery (January 27-28)
 
@@ -79,7 +79,7 @@ This was completely wrong. The content was fine. The transport was broken.
 
 ## February 6: Opus 4.6 breaks through
 
-On February 5, Anthropic released Claude Opus 4.6. The next morning, February 6, a fresh session was started on the RTI interop problem.
+On February 5, Anthropic released Claude Opus 4.6 — and, coincidentally, published [a case study about building a C compiler](https://www.anthropic.com/engineering/building-c-compiler) using "parallel Claudes." That post was the nudge to revisit VibeDDS. A more capable model had just dropped. The next morning, February 6, a fresh session was started on the RTI interop problem.
 
 Within **1 hour and 40 minutes**, the problem was solved.
 
