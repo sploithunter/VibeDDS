@@ -30,11 +30,13 @@ Before writing a single line of code, the foundation was laid:
 
 **CLAUDE.md as the constitution.** A `CLAUDE.md` file established the agent's operating instructions: test early and often, write unit tests for every module, write end-to-end tests for every integration point, and build incrementally through defined stages (CDR serialization, then RTPS messages, then SPDP discovery, then SEDP endpoint discovery, then pub/sub data exchange). This file persisted across sessions and acted as the agent's memory of project conventions. This mattered because the agent's natural tendency is to sprint toward the goal and declare victory — the `CLAUDE.md` was the guardrail that forced discipline.
 
-## Day 1: from zero to discovery (Wednesday, January 28)
+## Days 1-2: from zero to discovery (Tuesday-Wednesday, January 27-28)
 
-Wednesday's CKO schedule had the research team on an excursion in San Francisco for the entire day. The laptop was left running at headquarters in Sunnyvale. By the time we got back for Karaoke Night, the agent had been working unsupervised all day. At 4:50 PM, the first commit had landed: 62 files, nearly 99,000 lines (including the converted spec markdowns). The actual library code was about 3,400 lines of Python and 2,000 lines of Rust, covering CDR serialization, RTPS message building/parsing, SPDP discovery, and the beginnings of SEDP.
+On Tuesday, the research team was in working sessions at HQ from 10 AM to 6 PM. Between sessions, the project was set up: nine OMG spec PDFs converted to markdown, the initial architecture sketched out, and the agent pointed at the task. That evening was the Engineering Department Dinner at Bay Padel in Sunnyvale. The laptop was left running.
 
-Karaoke Night at HQ started at 7 PM. At 7:55 PM, while somewhere in the building people were singing, the next commit landed: Stage 6e, 7,600 additional lines covering data pub/sub, the Rust participant implementation, hello_pub/hello_sub examples, RTI interop test infrastructure, and wire compatibility tests. The agent had gone from zero to a DDS implementation with working self-discovery and data exchange while we were across the bay.
+Wednesday's CKO schedule had the research team on an excursion in San Francisco for the entire day. The laptop stayed behind at headquarters in Sunnyvale, the agent working unsupervised. By 4:50 PM, the first commit had landed: 62 files, nearly 99,000 lines (including the converted spec markdowns). The actual library code was about 3,400 lines of Python and 2,000 lines of Rust, covering CDR serialization, RTPS message building/parsing, SPDP discovery, and the beginnings of SEDP.
+
+By the time we got back from San Francisco for Karaoke Night, the agent had built the foundation. Karaoke started at 7 PM. At 7:55 PM, while somewhere in the building people were singing, the next commit landed: Stage 6e, 7,600 additional lines covering data pub/sub, the Rust participant implementation, hello_pub/hello_sub examples, RTI interop test infrastructure, and wire compatibility tests. The agent had gone from zero to a DDS implementation with working self-discovery and data exchange while we were across the bay.
 
 ```
 Jan 28 16:50  Initial commit: Python + Rust libraries, specs     98,767 lines
