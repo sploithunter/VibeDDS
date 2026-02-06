@@ -8,6 +8,8 @@ This story begins at RTI's Company Kickoff (CKO) in the last week of January 202
 
 Someone floated a thought experiment: what if you tried to vibe code a DDS implementation?
 
+We chose DDS deliberately. Everyone at RTI — not just the development team — understands the complexity of the DDS protocol and the difficulty of getting an implementation right. Sales engineers have debugged interop issues. Product managers have watched multi-month integration efforts. Field engineers know what it means when `rtiddsspy` shows zero matched subscriptions. If an AI agent could build a working DDS implementation, it would resonate with this audience in a way that a compiler or a web framework wouldn't. Everyone here knows exactly how hard this is supposed to be.
+
 DDS is a publish-subscribe middleware standard governed by the OMG, used in defense, autonomous vehicles, robotics, and industrial IoT. RTI Connext DDS — our own product — represents decades of engineering. The RTPS wire protocol specification alone runs to 282 pages. Getting a from-scratch implementation to interoperate with RTI Connext is not a matter of passing a test suite you wrote yourself — RTI's implementation is the ground truth, and it will reject your packets for reasons buried in spec sections you haven't read yet.
 
 The thought experiment turned into an actual experiment. Between CKO sessions, on hotel Wi-Fi, VibeDDS was born.
